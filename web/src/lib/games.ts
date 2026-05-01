@@ -73,16 +73,19 @@ function revOf(p: Parsed): number {
   return highest;
 }
 
-export function autoSelect(files: string[]): string {
+export const DEFAULT_PREFERENCES: readonly string[] = ["USA", "World"];
+
+export function autoSelect(files: string[], preferences: readonly string[] = DEFAULT_PREFERENCES): string {
   if (files.length === 0) return "";
   const parsed = files.map(parseName);
   const playable = parsed.filter((p) => !hasTag(p, "Demo") && !hasTag(p, "Proto"));
   const candidates = playable.length > 0 ? playable : parsed;
 
-  const usa = candidates.filter((p) => hasTag(p, "USA"));
-  if (usa.length > 0) return pickHighestRev(usa);
-  const world = candidates.filter((p) => hasTag(p, "World"));
-  if (world.length > 0) return pickHighestRev(world);
+  for (const tag of preferences) {
+    if (!tag) continue;
+    const matched = candidates.filter((p) => hasTag(p, tag));
+    if (matched.length > 0) return pickHighestRev(matched);
+  }
   return pickHighestRev(candidates);
 }
 

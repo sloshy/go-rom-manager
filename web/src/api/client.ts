@@ -24,6 +24,8 @@ export interface Mapping {
   sourcePath: string;
   destPath: string;
   manualGroups: Record<string, string>;
+  /** Per-mapping preference override; absent/null means inherit global. */
+  preferences?: string[] | null;
 }
 
 export interface MappingDetail {
@@ -31,11 +33,23 @@ export interface MappingDetail {
   sourceFiles: string[];
   destFiles: string[];
   sourceGroups: { prefix: string; files: string[] }[];
+  /** Resolved preference list — the per-mapping override if set, otherwise the global. */
+  effectivePreferences: string[];
 }
 
 export interface SyncResult {
   copied: string[];
   deleted: string[];
+}
+
+export interface SettingsPayload {
+  preferences: string[];
+  defaultPreferences: string[];
+}
+
+export interface MappingPreferencesPayload {
+  mapping: Mapping;
+  effectivePreferences: string[];
 }
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -83,5 +97,23 @@ export const api = {
     jsonFetch<SyncResult>(`/api/mappings/${id}/sync`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+
+  getSettings: () => jsonFetch<SettingsPayload>("/api/settings"),
+
+  updateSettings: (preferences: string[]) =>
+    jsonFetch<{ preferences: string[] }>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ preferences }),
+    }),
+
+  /**
+   * Replace a mapping's preference override. Pass null to clear the
+   * override and inherit the global preferences again.
+   */
+  updateMappingPreferences: (id: string, preferences: string[] | null) =>
+    jsonFetch<MappingPreferencesPayload>(`/api/mappings/${id}/preferences`, {
+      method: "PUT",
+      body: JSON.stringify({ preferences }),
     }),
 };

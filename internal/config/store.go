@@ -14,20 +14,32 @@ import (
 // any manual prefix overrides. The set of "selected" files is derived at
 // runtime from the destination directory's contents (intersected with
 // the source) — it is intentionally not persisted here.
+//
+// Preferences is an optional per-mapping override of the auto-select
+// priority order. A nil pointer means "inherit the global preferences";
+// a non-nil slice (even if empty) is treated as an explicit override.
 type Mapping struct {
 	ID           string            `json:"id"`
 	Name         string            `json:"name"`
 	SourcePath   string            `json:"sourcePath"`
 	DestPath     string            `json:"destPath"`
-	ManualGroups map[string]string `json:"manualGroups"` // filename → override prefix
+	ManualGroups map[string]string `json:"manualGroups"`
+	Preferences  *[]string         `json:"preferences,omitempty"`
 }
 
-// Store persists the list of mappings to a JSON file. All access is
-// serialized through the embedded mutex; writes are atomic via temp+rename.
+// Store persists the list of mappings and the global preferences list to
+// a JSON file. All access is serialized through the embedded mutex;
+// writes are atomic via temp+rename.
 type Store struct {
-	mu       sync.Mutex
-	path     string
-	mappings []Mapping
+	mu                sync.Mutex
+	path              string
+	mappings          []Mapping
+	globalPreferences *[]string
+}
+
+type storeFile struct {
+	Mappings          []Mapping `json:"mappings"`
+	GlobalPreferences *[]string `json:"globalPreferences,omitempty"`
 }
 
 // NewStore loads the JSON file at path (creating an empty store if the
@@ -45,17 +57,17 @@ func (s *Store) load() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			s.mappings = nil
+			s.globalPreferences = nil
 			return nil
 		}
 		return err
 	}
-	var wrapper struct {
-		Mappings []Mapping `json:"mappings"`
-	}
+	var wrapper storeFile
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return fmt.Errorf("parse %s: %w", s.path, err)
 	}
 	s.mappings = wrapper.Mappings
+	s.globalPreferences = wrapper.GlobalPreferences
 	return nil
 }
 
@@ -63,9 +75,7 @@ func (s *Store) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	wrapper := struct {
-		Mappings []Mapping `json:"mappings"`
-	}{Mappings: s.mappings}
+	wrapper := storeFile{Mappings: s.mappings, GlobalPreferences: s.globalPreferences}
 	data, err := json.MarshalIndent(wrapper, "", "  ")
 	if err != nil {
 		return err
@@ -149,6 +159,27 @@ func (s *Store) Update(m Mapping) (bool, error) {
 	return false, nil
 }
 
+// SetMappingPreferences replaces the preferences override for the
+// mapping with the given ID. Pass nil to clear the override (so the
+// mapping inherits the global preferences). Returns false if no such
+// mapping exists.
+func (s *Store) SetMappingPreferences(id string, prefs *[]string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.mappings {
+		if s.mappings[i].ID == id {
+			prev := s.mappings[i].Preferences
+			s.mappings[i].Preferences = prefs
+			if err := s.saveLocked(); err != nil {
+				s.mappings[i].Preferences = prev
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Delete removes the mapping with the given ID. Returns false if no
 // such mapping exists.
 func (s *Store) Delete(id string) (bool, error) {
@@ -166,6 +197,33 @@ func (s *Store) Delete(id string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// GlobalPreferences returns a copy of the persisted global preferences
+// list, or nil if none has been set.
+func (s *Store) GlobalPreferences() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.globalPreferences == nil {
+		return nil
+	}
+	out := make([]string, len(*s.globalPreferences))
+	copy(out, *s.globalPreferences)
+	return out
+}
+
+// SetGlobalPreferences replaces the persisted global preferences list.
+func (s *Store) SetGlobalPreferences(prefs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prev := s.globalPreferences
+	clone := append([]string(nil), prefs...)
+	s.globalPreferences = &clone
+	if err := s.saveLocked(); err != nil {
+		s.globalPreferences = prev
+		return err
+	}
+	return nil
 }
 
 func newID() (string, error) {

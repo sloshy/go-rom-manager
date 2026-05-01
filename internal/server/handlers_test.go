@@ -239,6 +239,144 @@ func TestEndToEnd_RedDeletes_OrangeStays(t *testing.T) {
 	}
 }
 
+func TestSettingsRoundTrip(t *testing.T) {
+	ts, _, _, _ := setupTestServer(t)
+
+	resp, err := http.Get(ts.URL + "/api/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var initial struct {
+		Preferences        []string `json:"preferences"`
+		DefaultPreferences []string `json:"defaultPreferences"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&initial); err != nil {
+		t.Fatal(err)
+	}
+	if len(initial.Preferences) != 2 || initial.Preferences[0] != "USA" || initial.Preferences[1] != "World" {
+		t.Errorf("default preferences = %v, want [USA World]", initial.Preferences)
+	}
+	if len(initial.DefaultPreferences) == 0 {
+		t.Error("expected defaultPreferences hint to be populated")
+	}
+
+	body, _ := json.Marshal(map[string]any{"preferences": []string{" Japan ", "Europe", ""}})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	put, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer put.Body.Close()
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("PUT settings status=%d", put.StatusCode)
+	}
+
+	resp2, _ := http.Get(ts.URL + "/api/settings")
+	defer resp2.Body.Close()
+	var after struct {
+		Preferences []string `json:"preferences"`
+	}
+	json.NewDecoder(resp2.Body).Decode(&after)
+	if len(after.Preferences) != 2 || after.Preferences[0] != "Japan" || after.Preferences[1] != "Europe" {
+		t.Errorf("after PUT got %v, want [Japan Europe] (trimmed/dropped empty)", after.Preferences)
+	}
+}
+
+func TestSettings_RejectsDuplicates(t *testing.T) {
+	ts, _, _, _ := setupTestServer(t)
+	body, _ := json.Marshal(map[string]any{"preferences": []string{"USA", "usa"}})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 on case-insensitive duplicate, got %d", resp.StatusCode)
+	}
+}
+
+func TestMappingPreferences_OverrideAndInherit(t *testing.T) {
+	ts, srcRoot, dstRoot, store := setupTestServer(t)
+
+	created, err := store.Add(config.Mapping{
+		Name:       "SNES",
+		SourcePath: filepath.Join(srcRoot, "snes"),
+		DestPath:   dstRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set a global preference so we can tell inheritance apart.
+	body, _ := json.Marshal(map[string]any{"preferences": []string{"Japan"}})
+	r, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+	if got, _ := http.DefaultClient.Do(r); got.StatusCode != http.StatusOK {
+		t.Fatalf("seed global prefs status=%d", got.StatusCode)
+	}
+
+	// Mapping with no override should inherit the global prefs.
+	resp, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer resp.Body.Close()
+	var detail struct {
+		Mapping              config.Mapping `json:"mapping"`
+		EffectivePreferences []string       `json:"effectivePreferences"`
+	}
+	json.NewDecoder(resp.Body).Decode(&detail)
+	if detail.Mapping.Preferences != nil {
+		t.Errorf("expected nil per-mapping override, got %v", detail.Mapping.Preferences)
+	}
+	if len(detail.EffectivePreferences) != 1 || detail.EffectivePreferences[0] != "Japan" {
+		t.Errorf("effective prefs = %v, want [Japan] inherited from global", detail.EffectivePreferences)
+	}
+
+	// Setting a per-mapping override wins over the global.
+	overrideBody, _ := json.Marshal(map[string]any{"preferences": []string{"Europe"}})
+	pReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID+"/preferences", bytes.NewReader(overrideBody))
+	pReq.Header.Set("Content-Type", "application/json")
+	pResp, _ := http.DefaultClient.Do(pReq)
+	defer pResp.Body.Close()
+	if pResp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT mapping prefs status=%d", pResp.StatusCode)
+	}
+
+	resp2, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer resp2.Body.Close()
+	json.NewDecoder(resp2.Body).Decode(&detail)
+	if detail.Mapping.Preferences == nil || (*detail.Mapping.Preferences)[0] != "Europe" {
+		t.Errorf("override not stored, got %+v", detail.Mapping.Preferences)
+	}
+	if len(detail.EffectivePreferences) != 1 || detail.EffectivePreferences[0] != "Europe" {
+		t.Errorf("effective prefs = %v, want [Europe] from override", detail.EffectivePreferences)
+	}
+
+	// Clearing (null) reverts the mapping to inheriting global.
+	clearReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID+"/preferences",
+		bytes.NewReader([]byte(`{"preferences":null}`)))
+	clearReq.Header.Set("Content-Type", "application/json")
+	cResp, _ := http.DefaultClient.Do(clearReq)
+	defer cResp.Body.Close()
+	if cResp.StatusCode != http.StatusOK {
+		t.Fatalf("clear status=%d", cResp.StatusCode)
+	}
+	resp3, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer resp3.Body.Close()
+	var afterClear struct {
+		Mapping              config.Mapping `json:"mapping"`
+		EffectivePreferences []string       `json:"effectivePreferences"`
+	}
+	json.NewDecoder(resp3.Body).Decode(&afterClear)
+	if afterClear.Mapping.Preferences != nil {
+		t.Errorf("expected cleared override, got %+v", afterClear.Mapping.Preferences)
+	}
+	if len(afterClear.EffectivePreferences) != 1 || afterClear.EffectivePreferences[0] != "Japan" {
+		t.Errorf("effective prefs after clear = %v, want [Japan] (back to global)", afterClear.EffectivePreferences)
+	}
+}
+
 func TestSPAFallback(t *testing.T) {
 	ts, _, _, _ := setupTestServer(t)
 	resp, err := http.Get(ts.URL + "/some/spa/route")

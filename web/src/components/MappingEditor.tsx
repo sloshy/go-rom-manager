@@ -1,4 +1,5 @@
 import { Component, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { A } from "@solidjs/router";
 import { editor } from "../stores/editor";
 import { GameColumn } from "./GameColumn";
 import { SyncToolbar } from "./SyncToolbar";
@@ -47,6 +48,9 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
         <span class="text-dim" style={{ "margin-left": "auto" }}>
           {editor.state.detail!.mapping.sourcePath} → {editor.state.detail!.mapping.destPath}
         </span>
+        <A href={`/mapping/${props.id}/settings`} class="crumbs">
+          [SETTINGS]
+        </A>
       </div>
       <Show when={editor.state.error}>
         <div class="text-danger">! {editor.state.error}</div>

@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/slosh/go-rom-manager/internal/config"
 	"github.com/slosh/go-rom-manager/internal/fsutil"
@@ -108,11 +110,124 @@ func (s *Server) handleGetMapping(w http.ResponseWriter, r *http.Request) {
 	srcGroups := games.GroupFiles(srcFiles, m.ManualGroups)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"mapping":          m,
-		"sourceFiles":      srcFiles,
-		"destFiles":        destFiles,
-		"sourceGroups":     srcGroups,
+		"mapping":              m,
+		"sourceFiles":          srcFiles,
+		"destFiles":            destFiles,
+		"sourceGroups":         srcGroups,
+		"effectivePreferences": s.effectivePreferences(m),
 	})
+}
+
+// effectivePreferences resolves the preference list that should drive
+// auto-select for the given mapping: per-mapping override (if set),
+// otherwise the persisted global preferences, otherwise the project default.
+func (s *Server) effectivePreferences(m config.Mapping) []string {
+	if m.Preferences != nil {
+		out := make([]string, len(*m.Preferences))
+		copy(out, *m.Preferences)
+		return out
+	}
+	if g := s.store.GlobalPreferences(); g != nil {
+		return g
+	}
+	out := make([]string, len(games.DefaultPreferences))
+	copy(out, games.DefaultPreferences)
+	return out
+}
+
+type preferencesPayload struct {
+	Preferences []string `json:"preferences"`
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
+	prefs := s.store.GlobalPreferences()
+	if prefs == nil {
+		prefs = append([]string(nil), games.DefaultPreferences...)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"preferences":        prefs,
+		"defaultPreferences": games.DefaultPreferences,
+	})
+}
+
+func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var req preferencesPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	cleaned, err := cleanPreferences(req.Preferences)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.store.SetGlobalPreferences(cleaned); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"preferences": cleaned})
+}
+
+// mappingPreferencesPayload's pointer field distinguishes "field omitted /
+// null → inherit global" from "explicit list (possibly empty) → override".
+type mappingPreferencesPayload struct {
+	Preferences *[]string `json:"preferences"`
+}
+
+func (s *Server) handleUpdateMappingPreferences(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req mappingPreferencesPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	var override *[]string
+	if req.Preferences != nil {
+		cleaned, err := cleanPreferences(*req.Preferences)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		override = &cleaned
+	}
+
+	ok, err := s.store.SetMappingPreferences(id, override)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "mapping not found")
+		return
+	}
+	m, _ := s.store.Get(id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mapping":              m,
+		"effectivePreferences": s.effectivePreferences(m),
+	})
+}
+
+// cleanPreferences trims whitespace, drops empty entries, and rejects
+// duplicates (case-insensitive). The returned slice is always non-nil
+// (empty if every entry was blank) so callers can distinguish "explicit
+// empty override" from a nil "inherit" sentinel up the stack.
+func cleanPreferences(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, p := range in {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		key := strings.ToLower(t)
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("duplicate preference: %q", t)
+		}
+		seen[key] = struct{}{}
+		out = append(out, t)
+	}
+	return out, nil
 }
 
 func (s *Server) handleDeleteMapping(w http.ResponseWriter, r *http.Request) {

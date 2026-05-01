@@ -84,4 +84,24 @@ describe("autoSelect", () => {
   it("returns empty for empty input", () => {
     expect(autoSelect([])).toBe("");
   });
+
+  it("respects a custom preference order", () => {
+    const files = [
+      "Example Game 1 (USA).zip",
+      "Example Game 1 (Japan).zip",
+      "Example Game 1 (Europe).zip",
+    ];
+    expect(autoSelect(files, ["Japan", "USA"])).toBe("Example Game 1 (Japan).zip");
+    expect(autoSelect(files, ["Europe"])).toBe("Example Game 1 (Europe).zip");
+  });
+
+  it("falls through unmatched preferences in order", () => {
+    const files = ["Example Game 1 (Japan).zip", "Example Game 1 (Europe).zip"];
+    expect(autoSelect(files, ["USA", "Japan", "Europe"])).toBe("Example Game 1 (Japan).zip");
+  });
+
+  it("filters Demo/Proto regardless of preferences", () => {
+    const files = ["Example Game 1 (Japan) (Demo).zip", "Example Game 1 (Japan).zip"];
+    expect(autoSelect(files, ["Japan"])).toBe("Example Game 1 (Japan).zip");
+  });
 });

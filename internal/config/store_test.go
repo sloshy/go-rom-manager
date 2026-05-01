@@ -85,6 +85,54 @@ func TestStore_UpdateAndDelete(t *testing.T) {
 	}
 }
 
+func TestStore_GlobalPreferencesPersist(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+	s, _ := NewStore(storePath)
+
+	if got := s.GlobalPreferences(); got != nil {
+		t.Errorf("fresh store GlobalPreferences = %v, want nil", got)
+	}
+	if err := s.SetGlobalPreferences([]string{"Japan", "USA"}); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := NewStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s2.GlobalPreferences()
+	if len(got) != 2 || got[0] != "Japan" || got[1] != "USA" {
+		t.Errorf("reloaded GlobalPreferences = %v, want [Japan USA]", got)
+	}
+}
+
+func TestStore_SetMappingPreferences(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+	s, _ := NewStore(storePath)
+	added, _ := s.Add(Mapping{Name: "A", SourcePath: "/s", DestPath: "/d"})
+
+	override := []string{"Europe"}
+	ok, err := s.SetMappingPreferences(added.ID, &override)
+	if err != nil || !ok {
+		t.Fatalf("SetMappingPreferences = (%v, %v)", ok, err)
+	}
+	got, _ := s.Get(added.ID)
+	if got.Preferences == nil || (*got.Preferences)[0] != "Europe" {
+		t.Errorf("override not persisted, got %+v", got.Preferences)
+	}
+
+	// Clearing the override puts the mapping back to inheriting global prefs.
+	if _, err := s.SetMappingPreferences(added.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Get(added.ID)
+	if got.Preferences != nil {
+		t.Errorf("expected nil preferences after clear, got %+v", got.Preferences)
+	}
+}
+
 func TestStore_AtomicWrite(t *testing.T) {
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "mappings.json")

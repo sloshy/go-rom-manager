@@ -69,7 +69,8 @@ function toggleFile(filename: string) {
 
 /**
  * Source-side prefix click: if the displayed group has any selected
- * file, deselect them all; otherwise auto-pick the best variant.
+ * file, deselect them all; otherwise auto-pick the best variant using
+ * the mapping's effective preferences (override or inherited global).
  */
 function togglePrefix(files: string[]) {
   setState(
@@ -78,7 +79,8 @@ function togglePrefix(files: string[]) {
       if (anySelected) {
         for (const f of files) delete s.selected[f];
       } else {
-        const pick = autoSelect(files);
+        const prefs = s.detail?.effectivePreferences;
+        const pick = autoSelect(files, prefs);
         if (pick) s.selected[pick] = true;
       }
       s.dirty = true;

@@ -7,15 +7,29 @@ import (
 
 var revRegexp = regexp.MustCompile(`(?i)^Rev\s*(\d+)$`)
 
+// DefaultPreferences is the priority order used when no per-mapping or
+// global override is configured: prefer USA, then World, then fall back
+// to whatever remains.
+var DefaultPreferences = []string{"USA", "World"}
+
 // AutoSelect picks the "best" file from a group of files that share a
-// prefix, following the project's stated priority:
+// prefix using DefaultPreferences. See AutoSelectWith for the
+// preference-aware variant.
+func AutoSelect(files []string) string {
+	return AutoSelectWith(files, DefaultPreferences)
+}
+
+// AutoSelectWith picks the "best" file from a group of files that share
+// a prefix, following the project's selection priority:
 //
 //  1. Drop files tagged Demo or Proto when at least one non-Demo/Proto exists.
-//  2. Prefer USA, then World; fall back to whatever remains.
-//  3. Among ties, pick the highest revision (Rev N).
+//  2. Walk preferences in order; the first tag that matches at least one
+//     candidate wins. Empty preference strings are skipped.
+//  3. Among ties (or when no preference matches), pick the highest revision
+//     (Rev N).
 //
-// AutoSelect returns "" if files is empty.
-func AutoSelect(files []string) string {
+// AutoSelectWith returns "" if files is empty.
+func AutoSelectWith(files []string, preferences []string) string {
 	if len(files) == 0 {
 		return ""
 	}
@@ -30,11 +44,13 @@ func AutoSelect(files []string) string {
 		candidates = parsed
 	}
 
-	if usa := withTag(candidates, "USA"); len(usa) > 0 {
-		return pickHighestRev(usa)
-	}
-	if world := withTag(candidates, "World"); len(world) > 0 {
-		return pickHighestRev(world)
+	for _, tag := range preferences {
+		if tag == "" {
+			continue
+		}
+		if matched := withTag(candidates, tag); len(matched) > 0 {
+			return pickHighestRev(matched)
+		}
 	}
 	return pickHighestRev(candidates)
 }

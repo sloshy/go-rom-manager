@@ -32,10 +32,13 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("GET /api/browse", s.handleBrowse)
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handleUpdateSettings)
 	mux.HandleFunc("GET /api/mappings", s.handleListMappings)
 	mux.HandleFunc("POST /api/mappings", s.handleCreateMapping)
 	mux.HandleFunc("GET /api/mappings/{id}", s.handleGetMapping)
 	mux.HandleFunc("DELETE /api/mappings/{id}", s.handleDeleteMapping)
+	mux.HandleFunc("PUT /api/mappings/{id}/preferences", s.handleUpdateMappingPreferences)
 	mux.HandleFunc("POST /api/mappings/{id}/sync", s.handleSync)
 
 	mux.Handle("/", spaFileServer(s.dist))
