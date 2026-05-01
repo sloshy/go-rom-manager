@@ -1,0 +1,17 @@
+.git
+.github
+.gitignore
+.dockerignore
+README.md
+LICENSE*
+scripts/
+
+# build artifacts (produced fresh inside the image)
+/rom-manager
+web/node_modules/
+web/dist/
+
+# editor / OS noise
+.idea/
+.vscode/
+.DS_Store

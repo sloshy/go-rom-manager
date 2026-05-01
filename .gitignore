@@ -1,0 +1,10 @@
+/web/node_modules/
+
+# binaries
+/rom-manager
+/romsync
+*.exe
+
+# test dirs
+test-source/
+test-dest/

@@ -1,0 +1,327 @@
+.tui-panel {
+  background: var(--bg-panel);
+  border: 2px solid var(--border);
+  position: relative;
+}
+.tui-panel::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(126, 224, 138, 0.05);
+}
+
+.tui-panel--bright {
+  border-color: var(--border-bright);
+}
+
+.tui-titlebar {
+  background: var(--border);
+  color: var(--fg);
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tui-button {
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg-panel-alt);
+  color: var(--accent-green);
+  border: 2px solid var(--accent-green-dim);
+  padding: 8px 14px;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--accent-green-dim);
+  transition: transform 60ms, box-shadow 60ms;
+}
+.tui-button:hover {
+  background: var(--border);
+  color: var(--accent-green);
+}
+.tui-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--accent-green-dim);
+}
+.tui-button[disabled] {
+  cursor: not-allowed;
+  color: var(--fg-muted);
+  border-color: var(--fg-muted);
+  box-shadow: 4px 4px 0 var(--fg-muted);
+}
+
+.tui-button--amber {
+  color: var(--accent-amber);
+  border-color: var(--accent-amber-dim);
+  box-shadow: 4px 4px 0 var(--accent-amber-dim);
+}
+.tui-button--amber:active {
+  box-shadow: 2px 2px 0 var(--accent-amber-dim);
+}
+
+.tui-button--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  box-shadow: 4px 4px 0 var(--danger);
+}
+
+.tui-checkbox {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--fg-dim);
+  background: var(--bg);
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.tui-checkbox:checked {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+}
+.tui-checkbox:checked::after {
+  content: "X";
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
+  color: var(--bg);
+  position: absolute;
+  top: 1px;
+  left: 3px;
+}
+.tui-checkbox[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.tui-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tui-list li {
+  padding: 4px 8px;
+  border-bottom: 1px dashed var(--border);
+}
+.tui-list li:last-child {
+  border-bottom: none;
+}
+
+.tui-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  background: var(--bg-panel);
+  border-bottom: 2px solid var(--border);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.app-header .brand {
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.9rem;
+  color: var(--accent-green);
+  text-shadow: 0 0 8px var(--shadow);
+}
+.app-header .crumbs {
+  color: var(--fg-dim);
+  font-size: 0.9em;
+}
+
+.app-main {
+  flex: 1;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.app-footer {
+  background: var(--bg-panel);
+  border-top: 2px solid var(--border);
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.row--space {
+  justify-content: space-between;
+}
+
+.text-dim {
+  color: var(--fg-dim);
+}
+.text-muted {
+  color: var(--fg-muted);
+}
+.text-green {
+  color: var(--accent-green);
+}
+.text-amber {
+  color: var(--accent-amber);
+}
+.text-danger {
+  color: var(--danger);
+}
+
+.game-row {
+  display: flex;
+  flex-direction: column;
+  border-left: 4px solid var(--fg-muted);
+  padding: 4px 8px 4px 10px;
+  margin-bottom: 4px;
+  background: var(--bg-panel);
+}
+.game-row.is-selected {
+  border-left-color: var(--accent-green);
+  background: linear-gradient(
+    to right,
+    rgba(126, 224, 138, 0.12),
+    transparent 60%
+  );
+}
+.game-row.is-orphan {
+  border-left-color: var(--accent-amber);
+  background: linear-gradient(
+    to right,
+    rgba(240, 168, 90, 0.12),
+    transparent 60%
+  );
+}
+.game-row.is-removing {
+  border-left-color: var(--danger);
+  background: linear-gradient(
+    to right,
+    rgba(255, 90, 90, 0.14),
+    transparent 60%
+  );
+}
+.game-row .game-prefix {
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+}
+.game-row.is-selected .game-prefix {
+  color: var(--accent-green);
+}
+.game-row.is-orphan .game-prefix {
+  color: var(--accent-amber);
+}
+.game-row.is-removing .game-prefix {
+  color: var(--danger);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.game-row .game-files {
+  margin: 4px 0 0 22px;
+  padding: 0;
+  list-style: none;
+}
+.game-row .game-files li {
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.game-row .game-files .filename {
+  color: var(--fg-dim);
+}
+.game-row .game-files li.is-checked .filename {
+  color: var(--fg);
+}
+
+.folder-browser {
+  border: 2px solid var(--border);
+  background: var(--bg-panel);
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+}
+.folder-browser .crumb {
+  color: var(--fg-dim);
+  font-size: 0.9em;
+  margin-bottom: 6px;
+}
+.folder-browser .crumb-link {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--accent-green);
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+}
+.folder-browser .crumb-link:hover {
+  text-decoration: underline;
+  color: var(--fg);
+}
+.folder-browser .crumb-sep {
+  color: var(--fg-muted);
+}
+.folder-browser .entry {
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.folder-browser .entry:hover {
+  background: var(--border);
+}
+.folder-browser .entry.is-dir::before {
+  content: "[+]";
+  color: var(--accent-amber);
+}
+.folder-browser .entry.is-file::before {
+  content: "---";
+  color: var(--fg-muted);
+}
+.folder-browser .entry.is-selected {
+  background: var(--accent-green-dim);
+  color: var(--fg);
+}
+
+.context-menu {
+  position: fixed;
+  background: var(--bg-panel);
+  border: 2px solid var(--accent-green);
+  box-shadow: 4px 4px 0 var(--accent-green-dim);
+  min-width: 180px;
+  z-index: 100;
+  padding: 4px 0;
+}
+.context-menu .item {
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.context-menu .item:hover {
+  background: var(--accent-green-dim);
+  color: var(--fg);
+}
