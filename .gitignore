@@ -2,8 +2,10 @@
 
 # binaries
 /rom-manager
-/romsync
 *.exe
+
+# dist
+web/dist/
 
 # test dirs
 test-source/
