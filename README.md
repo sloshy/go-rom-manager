@@ -11,7 +11,7 @@ The mental model:
   **destinations** (e.g. `~/dest/`) at process start.
 - Within the UI, create a **mapping** that pairs one source folder
   (e.g. `~/roms/snes`) with one destination folder (e.g. `~/dest/SNES`).
-- Files that share a name prefix (everything before the first `(...)`
+- Files that share a name prefix (everything before the first set of parentheses `(...)`
   group) are grouped into one **game**. Inside the editor, pick which
   variant(s) of each game should appear in the destination.
 - The destination is **read-only with respect to the sources** — sync
@@ -46,7 +46,7 @@ docker run --rm \
   -v /path/to/roms:/roms:ro \
   -v /path/to/dest:/dest \
   -v rom-manager-data:/data \
-  ghcr.io/sloshu/go-rom-manager:latest \
+  ghcr.io/sloshy/go-rom-manager:latest \
   --source /roms --dest /dest
 ```
 
@@ -83,7 +83,7 @@ picking a file, the editor auto-selects the best variant:
 
 1. Files tagged `Demo` or `Proto` are excluded if any other variant exists.
 2. Among the rest, prefer `USA`, then `World`, then anything.
-3. Among ties, prefer the highest `Rev N`.
+3. Among ties, prefer the highest `Rev N`. So for example two files `Example (Rev 1).zip` and `Example (Rev 2.zip)`, it will pick the latter.
 
 You can override grouping (e.g. to merge a Japanese release into the
 same group as its Western counterpart) by right-clicking a source-side
@@ -121,10 +121,3 @@ cd web && npm test            # frontend
     │   └── styles/        # retro / TUI CSS
     └── dist/              # vite build output, embedded by Go
 ```
-
-## Releasing
-
-Push a `v*` tag (e.g. `git tag v0.1.0 && git push --tags`) to trigger
-`.github/workflows/release.yml`, which builds and pushes a multi-arch
-image to `ghcr.io/<owner>/<repo>` with `latest` + semver tags, and
-attaches per-OS/per-arch binaries to the GitHub release.
