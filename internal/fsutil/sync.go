@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // SyncPlan captures the file-level diff between an intended destination
@@ -23,9 +24,15 @@ type SyncPlan struct {
 // Files in dest with no source counterpart ("orange extras") are left
 // in place; they are the only files the sync is forbidden from touching.
 //
+// allowedExts is an optional list of dest-side alt-format extensions
+// (e.g. ".rvz", ".cso") — if a dest file's extension is in the list and
+// its basename matches a source file's basename, the two are treated as
+// the same file for both copy-skip and managed-deletion purposes. Pass
+// nil for the original strict-name behavior.
+//
 // All file slices contain only basenames (no path separators); destDir
 // is read via ListFiles.
-func ComputeSync(intended, sourceFiles []string, destDir string) (SyncPlan, error) {
+func ComputeSync(intended, sourceFiles []string, destDir string, allowedExts []string) (SyncPlan, error) {
 	dest, err := ListFiles(destDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -38,31 +45,85 @@ func ComputeSync(intended, sourceFiles []string, destDir string) (SyncPlan, erro
 	for _, f := range intended {
 		wantSet[f] = struct{}{}
 	}
+	wantStems := make(map[string]struct{}, len(intended))
+	for _, f := range intended {
+		wantStems[stemOf(f)] = struct{}{}
+	}
 	haveSet := make(map[string]struct{}, len(dest))
 	for _, f := range dest {
 		haveSet[f] = struct{}{}
+	}
+	haveAltStems := make(map[string]struct{}, len(dest))
+	for _, f := range dest {
+		if extAllowed(f, allowedExts) {
+			haveAltStems[stemOf(f)] = struct{}{}
+		}
 	}
 	sourceSet := make(map[string]struct{}, len(sourceFiles))
 	for _, f := range sourceFiles {
 		sourceSet[f] = struct{}{}
 	}
+	sourceStems := make(map[string]struct{}, len(sourceFiles))
+	for _, f := range sourceFiles {
+		sourceStems[stemOf(f)] = struct{}{}
+	}
 
 	plan := SyncPlan{}
 	for f := range wantSet {
-		if _, ok := haveSet[f]; !ok {
-			plan.ToCopy = append(plan.ToCopy, f)
+		if _, ok := haveSet[f]; ok {
+			continue
 		}
+		if _, ok := haveAltStems[stemOf(f)]; ok {
+			continue
+		}
+		plan.ToCopy = append(plan.ToCopy, f)
 	}
 	for f := range haveSet {
 		if _, want := wantSet[f]; want {
 			continue
 		}
-		if _, hasSource := sourceSet[f]; !hasSource {
+		if extAllowed(f, allowedExts) {
+			if _, want := wantStems[stemOf(f)]; want {
+				continue
+			}
+		}
+		managed := false
+		if _, ok := sourceSet[f]; ok {
+			managed = true
+		} else if extAllowed(f, allowedExts) {
+			if _, ok := sourceStems[stemOf(f)]; ok {
+				managed = true
+			}
+		}
+		if !managed {
 			continue
 		}
 		plan.ToDelete = append(plan.ToDelete, f)
 	}
 	return plan, nil
+}
+
+// stemOf returns the filename with its trailing extension stripped, using
+// the same last-dot rule as filepath.Ext.
+func stemOf(name string) string {
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+// extAllowed reports whether the file's extension appears in the allowed
+// list. The allowed list is expected to be normalized to lowercase with a
+// leading dot (e.g. ".rvz"); the file's extension is lowercased before
+// comparison so case differences on disk are tolerated.
+func extAllowed(name string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	for _, a := range allowed {
+		if a == ext {
+			return true
+		}
+	}
+	return false
 }
 
 // ExecuteSync applies a SyncPlan: it copies each ToCopy file from srcDir

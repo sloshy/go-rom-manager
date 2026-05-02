@@ -5,8 +5,16 @@ let lastSyncBody: { intended: string[]; manualGroups: Record<string, string> } |
 
 type LoadFixture = {
   destFiles: string[];
+  sourceFiles?: string[];
   manualGroups?: Record<string, string>;
+  allowedExtensions?: string[];
 };
+
+const DEFAULT_SOURCES = [
+  "Example Game 1 (USA).zip",
+  "Example Game 1 (Japan).zip",
+  "Example Game 2 (USA).zip",
+];
 
 let nextLoad: LoadFixture = { destFiles: ["Example Game 1 (USA).zip"] };
 
@@ -25,6 +33,7 @@ beforeEach(() => {
         });
       }
       if (u.includes("/api/mappings/")) {
+        const sources = nextLoad.sourceFiles ?? DEFAULT_SOURCES;
         const detail = {
           mapping: {
             id: "x",
@@ -32,8 +41,9 @@ beforeEach(() => {
             sourcePath: "/s",
             destPath: "/d",
             manualGroups: nextLoad.manualGroups ?? {},
+            allowedExtensions: nextLoad.allowedExtensions ?? [],
           },
-          sourceFiles: ["Example Game 1 (USA).zip", "Example Game 1 (Japan).zip", "Example Game 2 (USA).zip"],
+          sourceFiles: sources,
           destFiles: nextLoad.destFiles,
           sourceGroups: [
             { prefix: "Example Game 1", files: ["Example Game 1 (USA).zip", "Example Game 1 (Japan).zip"] },
@@ -113,6 +123,100 @@ describe("editor", () => {
 
     expect(lastSyncBody).not.toBeNull();
     expect(lastSyncBody!.intended.sort()).toEqual(["Example Game 2 (USA).zip"]);
+  });
+
+  it("treats an alt-ext dest file as satisfying its source counterpart", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: ["Game.rvz"],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    // The .rvz on disk represents the .zip in source — treat the source
+    // file as already-selected; the dest file is NOT orange.
+    expect(editor.isFileSelected("Game.zip")).toBe(true);
+    expect(editor.extraFiles()).toEqual([]);
+    // No copies, no deletes pending.
+    expect(editor.pendingDiff()).toEqual({ toCopy: 0, toDelete: 0 });
+  });
+
+  it("treats an alt-ext dest file with unknown ext as orange", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: ["Game.cso"],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    // .cso isn't in the allow list → no relationship to source → orange.
+    expect(editor.isFileSelected("Game.zip")).toBe(false);
+    expect(editor.extraFiles()).toEqual(["Game.cso"]);
+  });
+
+  it("queues an alt-ext dest file for deletion when its source is deselected", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: ["Game.rvz"],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    editor.toggleFile("Game.zip");
+    // The user removed the game from intent → Game.rvz is managed (alt-ext
+    // match) and queued for deletion on next sync.
+    expect(editor.filesToRemove()).toEqual(["Game.rvz"]);
+    expect(editor.pendingDiff()).toEqual({ toCopy: 0, toDelete: 1 });
+  });
+
+  it("does not queue a copy when an alt-ext satisfier already exists", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: ["Game.rvz"],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    // Initial state already has Game.zip selected (via alt-ext). pendingDiff
+    // must show no copy because Game.rvz already represents the game in dest.
+    expect(editor.pendingDiff().toCopy).toBe(0);
+  });
+
+  it("destProjectionGroups shows the alt-ext filename when one is on disk", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: ["Game.rvz"],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    const groups = editor.destProjectionGroups();
+    // The dest panel should reflect what disk WILL contain post-sync —
+    // Game.rvz survives, Game.zip is never copied. Project source intent
+    // to its alt-ext counterpart.
+    expect(groups).toHaveLength(1);
+    expect(groups[0].files).toEqual(["Game.rvz"]);
+  });
+
+  it("destProjectionGroups falls back to source name when no alt-ext satisfier exists", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: [],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    // Nothing in dest — Game.zip will be copied as-is on sync.
+    editor.toggleFile("Game.zip");
+    const groups = editor.destProjectionGroups();
+    expect(groups[0].files).toEqual(["Game.zip"]);
+  });
+
+  it("destNameToSource maps alt-ext dest filenames back to source intent", async () => {
+    nextLoad = {
+      sourceFiles: ["Game.zip"],
+      destFiles: ["Game.rvz"],
+      allowedExtensions: [".rvz"],
+    };
+    await editor.load("x");
+    expect(editor.destNameToSource("Game.rvz")).toBe("Game.zip");
+    // Identity for exact-name matches and unknown names.
+    expect(editor.destNameToSource("Game.zip")).toBe("Game.zip");
+    expect(editor.destNameToSource("Unrelated.txt")).toBe("Unrelated.txt");
   });
 
   it("rehydrates from disk after sync — no persisted selection state", async () => {

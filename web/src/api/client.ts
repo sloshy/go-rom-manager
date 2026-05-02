@@ -26,6 +26,13 @@ export interface Mapping {
   manualGroups: Record<string, string>;
   /** Per-mapping preference override; absent/null means inherit global. */
   preferences?: string[] | null;
+  /**
+   * Dest-side alt-format extensions (e.g. ".rvz") considered equivalent
+   * to a source file with the same basename. Always normalized to
+   * lowercase ".ext" form by the server and always serialized as an
+   * array (possibly empty).
+   */
+  allowedExtensions: string[];
 }
 
 export interface MappingDetail {
@@ -87,7 +94,10 @@ export const api = {
 
   getMapping: (id: string) => jsonFetch<MappingDetail>(`/api/mappings/${id}`),
 
-  updateMapping: (id: string, body: { name: string; sourcePath: string; destPath: string }) =>
+  updateMapping: (
+    id: string,
+    body: { name: string; sourcePath: string; destPath: string; allowedExtensions: string[] },
+  ) =>
     jsonFetch<Mapping>(`/api/mappings/${id}`, { method: "PUT", body: JSON.stringify(body) }),
 
   deleteMapping: (id: string) =>

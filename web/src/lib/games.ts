@@ -17,6 +17,15 @@ export interface GameGroup {
 
 const KNOWN_EXTS = [".zip", ".7z", ".rar", ".bin", ".smc", ".sfc", ".gen", ".md", ".n64", ".z64", ".nes"];
 
+/**
+ * Strip the trailing ROM extension from a filename so the tag-parsing
+ * regex doesn't mistake it for a parenthesised group. Used ONLY by
+ * `parseName` (prefix + tags). Do not use this for alt-extension
+ * matching — it whitelists known ROM formats and conservatively trims
+ * unknown 1–5 character suffixes, which is the wrong rule for a
+ * user-configured allowed-extension list. Use `fileStem` / `fileExt`
+ * (last-dot semantics, mirrors Go's `filepath.Ext`) for that.
+ */
 function trimExt(name: string): string {
   const lower = name.toLowerCase();
   for (const ext of KNOWN_EXTS) {
@@ -25,6 +34,39 @@ function trimExt(name: string): string {
   const dot = name.lastIndexOf(".");
   if (dot > 0 && name.length - dot <= 5) return name.slice(0, dot);
   return name;
+}
+
+/**
+ * Returns the filename with its trailing extension removed. Mirrors Go's
+ * `filepath.Ext` semantics: takes everything after the last dot, only if
+ * that dot isn't the leading character.
+ */
+export function fileStem(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0) return filename;
+  return filename.slice(0, dot);
+}
+
+/**
+ * Returns the lowercase extension (including the leading dot) or the
+ * empty string for files with no dotted suffix.
+ */
+export function fileExt(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0) return "";
+  return filename.slice(dot).toLowerCase();
+}
+
+/**
+ * Reports whether `filename` carries an extension in `allowed`. The
+ * `allowed` list is expected to be normalized to lowercase ".ext" form;
+ * this function lowercases the file's extension before comparison.
+ */
+export function isAllowedExt(filename: string, allowed: readonly string[]): boolean {
+  if (allowed.length === 0) return false;
+  const ext = fileExt(filename);
+  if (!ext) return false;
+  return allowed.includes(ext);
 }
 
 export function parseName(filename: string): Parsed {

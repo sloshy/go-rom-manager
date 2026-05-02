@@ -18,7 +18,7 @@ func TestStore_AddGetAll(t *testing.T) {
 		t.Errorf("fresh store should be empty, got %v", got)
 	}
 
-	added, err := s.Add(Mapping{Name: "SNES", SourcePath: "/src/snes", DestPath: "/dst/SNES"})
+	added, err := s.Add(Mapping{Name: "Console A", SourcePath: "/src/console-a", DestPath: "/dst/console-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestStore_AddGetAll(t *testing.T) {
 	}
 
 	got, ok := s.Get(added.ID)
-	if !ok || got.Name != "SNES" {
+	if !ok || got.Name != "Console A" {
 		t.Errorf("Get(%q) = (%v, %v)", added.ID, got, ok)
 	}
 
@@ -42,7 +42,7 @@ func TestStore_PersistsAcrossInstances(t *testing.T) {
 	storePath := filepath.Join(dir, "mappings.json")
 
 	s1, _ := NewStore(storePath)
-	added, err := s1.Add(Mapping{Name: "Genesis", SourcePath: "/src/gen", DestPath: "/dst/Genesis"})
+	added, err := s1.Add(Mapping{Name: "Console B", SourcePath: "/src/console-b", DestPath: "/dst/console-b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestStore_PersistsAcrossInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := s2.Get(added.ID)
-	if !ok || got.Name != "Genesis" {
+	if !ok || got.Name != "Console B" {
 		t.Errorf("reloaded store missing the mapping; got=(%v, %v)", got, ok)
 	}
 }

@@ -230,10 +230,35 @@ func cleanPreferences(in []string) ([]string, error) {
 	return out, nil
 }
 
+// cleanExtensions normalizes a list of allowed alt-format extensions:
+// trim whitespace, drop empty/blank entries, lowercase, ensure a single
+// leading dot, silently dedupe. Unlike cleanPreferences this does not
+// error on duplicates — tag-style inputs naturally produce them and the
+// canonical form is identical, so silently coalescing is friendlier.
+func cleanExtensions(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, e := range in {
+		t := strings.TrimSpace(e)
+		t = strings.TrimPrefix(t, ".")
+		if t == "" {
+			continue
+		}
+		norm := "." + strings.ToLower(t)
+		if _, dup := seen[norm]; dup {
+			continue
+		}
+		seen[norm] = struct{}{}
+		out = append(out, norm)
+	}
+	return out
+}
+
 type updateMappingReq struct {
-	Name       string `json:"name"`
-	SourcePath string `json:"sourcePath"`
-	DestPath   string `json:"destPath"`
+	Name              string   `json:"name"`
+	SourcePath        string   `json:"sourcePath"`
+	DestPath          string   `json:"destPath"`
+	AllowedExtensions []string `json:"allowedExtensions"`
 }
 
 func (s *Server) handleUpdateMapping(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +288,7 @@ func (s *Server) handleUpdateMapping(w http.ResponseWriter, r *http.Request) {
 	m.Name = req.Name
 	m.SourcePath = req.SourcePath
 	m.DestPath = req.DestPath
+	m.AllowedExtensions = cleanExtensions(req.AllowedExtensions)
 	ok, err := s.store.Update(m)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -322,7 +348,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan, err := fsutil.ComputeSync(req.Intended, srcFiles, m.DestPath)
+	plan, err := fsutil.ComputeSync(req.Intended, srcFiles, m.DestPath, m.AllowedExtensions)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

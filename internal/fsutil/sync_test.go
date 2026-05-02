@@ -25,7 +25,7 @@ func TestComputeSync_DiffsCorrectly(t *testing.T) {
 	intended := []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"}
 	sourceFiles := []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"}
 
-	plan, err := ComputeSync(intended, sourceFiles, dir)
+	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestComputeSync_DeletesDeselectedFilesWithSourceCounterpart(t *testing.T) {
 	intended := []string{"Example Game 1 (USA).zip"}
 	sourceFiles := []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"}
 
-	plan, err := ComputeSync(intended, sourceFiles, dir)
+	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestComputeSync_PreservesFilesWithoutSourceCounterpart(t *testing.T) {
 	intended := []string{"Example Game 1 (USA).zip"}
 	sourceFiles := []string{"Example Game 1 (USA).zip"}
 
-	plan, err := ComputeSync(intended, sourceFiles, dir)
+	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +84,98 @@ func TestComputeSync_NonExistentDestTreatedAsEmpty(t *testing.T) {
 		[]string{"Example Game 1 (USA).zip"},
 		[]string{"Example Game 1 (USA).zip"},
 		dir,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 1 {
 		t.Errorf("ToCopy=%v, want 1 entry", plan.ToCopy)
+	}
+}
+
+func TestComputeSync_AltExtSatisfiesIntent(t *testing.T) {
+	// Source has Example Game.zip; dest has Example Game.rvz (a converted version).
+	// With ".rvz" allowed, the sync must treat them as the same file:
+	// no copy of Example Game.zip, no deletion of Example Game.rvz.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Example Game.rvz"), "rvz")
+
+	plan, err := ComputeSync(
+		[]string{"Example Game.zip"},
+		[]string{"Example Game.zip"},
+		dir,
+		[]string{".rvz"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToCopy) != 0 {
+		t.Errorf("ToCopy=%v, want empty (Example Game.rvz already satisfies)", plan.ToCopy)
+	}
+	if len(plan.ToDelete) != 0 {
+		t.Errorf("ToDelete=%v, want empty (Example Game.rvz alt-ext matches Example Game.zip)", plan.ToDelete)
+	}
+}
+
+func TestComputeSync_AltExtDeselectionDeletes(t *testing.T) {
+	// Example Game.rvz on disk, but the user has deselected the game entirely
+	// (intended is empty). Example Game.rvz is now managed via alt-ext, so it
+	// should be deleted.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Example Game.rvz"), "rvz")
+
+	plan, err := ComputeSync(
+		nil,
+		[]string{"Example Game.zip"},
+		dir,
+		[]string{".rvz"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToDelete) != 1 || plan.ToDelete[0] != "Example Game.rvz" {
+		t.Errorf("ToDelete=%v, want [Example Game.rvz]", plan.ToDelete)
+	}
+}
+
+func TestComputeSync_AltExtUnknownExtIsOrange(t *testing.T) {
+	// Example Game.cso has no source counterpart by name and ".cso" is NOT in
+	// the allowed list, so it must remain untouched (orange).
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Example Game.cso"), "cso")
+
+	plan, err := ComputeSync(
+		nil,
+		[]string{"Example Game.zip"},
+		dir,
+		[]string{".rvz"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToDelete) != 0 {
+		t.Errorf("ToDelete=%v, want empty (.cso not in allowed list)", plan.ToDelete)
+	}
+}
+
+func TestComputeSync_AltExtCaseInsensitive(t *testing.T) {
+	// Allowed list is normalized lowercase but the file on disk has
+	// uppercase extension — they should still match.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Example Game.RVZ"), "rvz")
+
+	plan, err := ComputeSync(
+		[]string{"Example Game.zip"},
+		[]string{"Example Game.zip"},
+		dir,
+		[]string{".rvz"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToCopy) != 0 || len(plan.ToDelete) != 0 {
+		t.Errorf("expected no-op, got ToCopy=%v ToDelete=%v", plan.ToCopy, plan.ToDelete)
 	}
 }
 

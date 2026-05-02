@@ -5,10 +5,11 @@ import type { Mapping } from "../api/client";
 
 const exampleMapping: Mapping = {
   id: "abc",
-  name: "SNES",
-  sourcePath: "/roms/snes",
-  destPath: "/dest/SNES",
+  name: "Console A",
+  sourcePath: "/roms/console-a",
+  destPath: "/dest/console-a",
   manualGroups: {},
+  allowedExtensions: [],
 };
 
 describe("MappingList", () => {
@@ -23,8 +24,8 @@ describe("MappingList", () => {
     const { getByText } = render(() => (
       <MappingList mappings={[exampleMapping]} onOpen={() => {}} />
     ));
-    expect(getByText("SNES")).toBeInTheDocument();
-    expect(getByText("/roms/snes → /dest/SNES")).toBeInTheDocument();
+    expect(getByText("Console A")).toBeInTheDocument();
+    expect(getByText("/roms/console-a → /dest/console-a")).toBeInTheDocument();
   });
 
   it("calls onOpen with the mapping id", () => {

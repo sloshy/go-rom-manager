@@ -19,7 +19,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, string, string, *config.St
 	t.Helper()
 	srcRoot := t.TempDir()
 	dstRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(srcRoot, "snes"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(srcRoot, "console-a"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{
@@ -29,7 +29,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, string, string, *config.St
 		"Example Game 2 (World) (Rev 2).zip",
 		"Example Game 2 (USA) (Demo).zip",
 	} {
-		if err := os.WriteFile(filepath.Join(srcRoot, "snes", f), []byte(f), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(srcRoot, "console-a", f), []byte(f), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -88,8 +88,8 @@ func TestHandleBrowse(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Entries) != 1 || got.Entries[0].Name != "snes" || !got.Entries[0].IsDir {
-		t.Errorf("Browse entries=%v, want [snes/]", got.Entries)
+	if len(got.Entries) != 1 || got.Entries[0].Name != "console-a" || !got.Entries[0].IsDir {
+		t.Errorf("Browse entries=%v, want [console-a/]", got.Entries)
 	}
 }
 
@@ -97,8 +97,8 @@ func TestHandleCreateMapping_Validates(t *testing.T) {
 	ts, srcRoot, dstRoot, _ := setupTestServer(t)
 
 	body, _ := json.Marshal(map[string]string{
-		"name":       "SNES",
-		"sourcePath": filepath.Join(srcRoot, "snes"),
+		"name":       "Test Mapping",
+		"sourcePath": filepath.Join(srcRoot, "console-a"),
 		"destPath":   dstRoot,
 	})
 	resp, err := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
@@ -129,8 +129,8 @@ func TestEndToEnd_CreateSelectSync(t *testing.T) {
 	ts, srcRoot, dstRoot, _ := setupTestServer(t)
 
 	body, _ := json.Marshal(map[string]string{
-		"name":       "SNES",
-		"sourcePath": filepath.Join(srcRoot, "snes"),
+		"name":       "Test Mapping",
+		"sourcePath": filepath.Join(srcRoot, "console-a"),
 		"destPath":   dstRoot,
 	})
 	resp, _ := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
@@ -185,8 +185,8 @@ func TestEndToEnd_RedDeletes_OrangeStays(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(map[string]string{
-		"name":       "SNES",
-		"sourcePath": filepath.Join(srcRoot, "snes"),
+		"name":       "Test Mapping",
+		"sourcePath": filepath.Join(srcRoot, "console-a"),
 		"destPath":   dstRoot,
 	})
 	resp, _ := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
@@ -303,8 +303,8 @@ func TestMappingPreferences_OverrideAndInherit(t *testing.T) {
 	ts, srcRoot, dstRoot, store := setupTestServer(t)
 
 	created, err := store.Add(config.Mapping{
-		Name:       "SNES",
-		SourcePath: filepath.Join(srcRoot, "snes"),
+		Name:       "Test Mapping",
+		SourcePath: filepath.Join(srcRoot, "console-a"),
 		DestPath:   dstRoot,
 	})
 	if err != nil {
@@ -374,6 +374,132 @@ func TestMappingPreferences_OverrideAndInherit(t *testing.T) {
 	}
 	if len(afterClear.EffectivePreferences) != 1 || afterClear.EffectivePreferences[0] != "Japan" {
 		t.Errorf("effective prefs after clear = %v, want [Japan] (back to global)", afterClear.EffectivePreferences)
+	}
+}
+
+func TestUpdateMapping_AllowedExtensionsRoundTrip(t *testing.T) {
+	ts, srcRoot, dstRoot, _ := setupTestServer(t)
+
+	body, _ := json.Marshal(map[string]string{
+		"name":       "Test Mapping",
+		"sourcePath": filepath.Join(srcRoot, "console-a"),
+		"destPath":   dstRoot,
+	})
+	resp, _ := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&created)
+	resp.Body.Close()
+
+	// Mixed-case + leading-dot inconsistency + duplicates → all normalized
+	// to canonical lowercase ".ext" entries with no duplicates.
+	updateBody, _ := json.Marshal(map[string]any{
+		"name":              "Test Mapping",
+		"sourcePath":        filepath.Join(srcRoot, "console-a"),
+		"destPath":          dstRoot,
+		"allowedExtensions": []string{"RVZ", ".cso", "cso", " chd "},
+	})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID,
+		bytes.NewReader(updateBody))
+	req.Header.Set("Content-Type", "application/json")
+	put, _ := http.DefaultClient.Do(req)
+	put.Body.Close()
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("PUT status=%d", put.StatusCode)
+	}
+
+	getResp, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer getResp.Body.Close()
+	var detail struct {
+		Mapping config.Mapping `json:"mapping"`
+	}
+	json.NewDecoder(getResp.Body).Decode(&detail)
+	got := detail.Mapping.AllowedExtensions
+	want := []string{".rvz", ".cso", ".chd"}
+	if len(got) != len(want) {
+		t.Fatalf("AllowedExtensions=%v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("AllowedExtensions[%d]=%q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestEndToEnd_AltExtSyncSkipsAndDeletes(t *testing.T) {
+	ts, srcRoot, dstRoot, _ := setupTestServer(t)
+
+	// Pre-existing alt-ext file in dest (e.g. user converted it externally
+	// and dropped it in). With ".rvz" allowed, sync must leave it alone.
+	convertedPath := filepath.Join(dstRoot, "Example Game 1 (USA).rvz")
+	if err := os.WriteFile(convertedPath, []byte("rvz"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"name":       "Test Mapping",
+		"sourcePath": filepath.Join(srcRoot, "console-a"),
+		"destPath":   dstRoot,
+	})
+	resp, _ := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&created)
+	resp.Body.Close()
+
+	// Configure allowed extensions on the mapping.
+	updateBody, _ := json.Marshal(map[string]any{
+		"name":              "Test Mapping",
+		"sourcePath":        filepath.Join(srcRoot, "console-a"),
+		"destPath":          dstRoot,
+		"allowedExtensions": []string{".rvz"},
+	})
+	updReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID,
+		bytes.NewReader(updateBody))
+	updReq.Header.Set("Content-Type", "application/json")
+	if r, _ := http.DefaultClient.Do(updReq); r.StatusCode != http.StatusOK {
+		t.Fatalf("PUT mapping status=%d", r.StatusCode)
+	}
+
+	// Sync with intended including the .zip whose .rvz alt-ext already
+	// exists. No copy, no delete.
+	syncBody, _ := json.Marshal(map[string]any{
+		"intended": []string{"Example Game 1 (USA).zip"},
+	})
+	r, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
+		"application/json", bytes.NewReader(syncBody))
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("sync status=%d", r.StatusCode)
+	}
+	var result struct {
+		Copied  []string `json:"copied"`
+		Deleted []string `json:"deleted"`
+	}
+	json.NewDecoder(r.Body).Decode(&result)
+	if len(result.Copied) != 0 {
+		t.Errorf("Copied=%v, want empty (.rvz alt-ext satisfies)", result.Copied)
+	}
+	if len(result.Deleted) != 0 {
+		t.Errorf("Deleted=%v, want empty (alt-ext file must be kept)", result.Deleted)
+	}
+	if _, err := os.Stat(convertedPath); err != nil {
+		t.Errorf("converted alt-ext file removed: %v", err)
+	}
+
+	// Now deselect the game entirely. Sync should delete the alt-ext
+	// file (it is "managed" via alt-ext to a known source file).
+	emptySync, _ := json.Marshal(map[string]any{"intended": []string{}})
+	r2, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
+		"application/json", bytes.NewReader(emptySync))
+	defer r2.Body.Close()
+	if r2.StatusCode != http.StatusOK {
+		t.Fatalf("second sync status=%d", r2.StatusCode)
+	}
+	if _, err := os.Stat(convertedPath); !os.IsNotExist(err) {
+		t.Errorf("expected alt-ext file removed, got err=%v", err)
 	}
 }
 

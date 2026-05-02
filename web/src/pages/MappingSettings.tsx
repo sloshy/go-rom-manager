@@ -1,8 +1,24 @@
-import { Component, Show, createMemo, createSignal, onMount } from "solid-js";
+import { Component, For, Show, createMemo, createSignal, onMount } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import { api, type AppConfigPayload } from "../api/client";
 import { PreferenceEditor } from "../components/PreferenceEditor";
 import { FolderBrowser } from "../components/FolderBrowser";
+import { TagInput } from "../components/TagInput";
+
+// Treat the allowed-extensions list as a set for dirty detection: the
+// server normalizes to a canonical lowercase form and the matching rule
+// doesn't care about order, so reordering chips shouldn't read as dirty.
+function setsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = new Set(a);
+  for (const x of b) if (!sa.has(x)) return false;
+  return true;
+}
+
+const normalizeExtension = (raw: string): string => {
+  const t = raw.trim().replace(/^\./, "").trim().toLowerCase();
+  return t ? "." + t : "";
+};
 
 function splitPath(fullPath: string, roots: string[]): { root: string; sub: string } {
   for (const root of roots) {
@@ -25,9 +41,11 @@ export const MappingSettings: Component = () => {
   const [editName, setEditName] = createSignal("");
   const [editSourcePath, setEditSourcePath] = createSignal("");
   const [editDestPath, setEditDestPath] = createSignal("");
+  const [editAllowedExts, setEditAllowedExts] = createSignal<string[]>([]);
   const [origName, setOrigName] = createSignal("");
   const [origSourcePath, setOrigSourcePath] = createSignal("");
   const [origDestPath, setOrigDestPath] = createSignal("");
+  const [origAllowedExts, setOrigAllowedExts] = createSignal<string[]>([]);
   const [editSaving, setEditSaving] = createSignal(false);
   const [editError, setEditError] = createSignal<string | null>(null);
   const [editSavedAt, setEditSavedAt] = createSignal<number | null>(null);
@@ -35,7 +53,8 @@ export const MappingSettings: Component = () => {
   const editDirty = createMemo(() =>
     editName() !== origName() ||
     editSourcePath() !== origSourcePath() ||
-    editDestPath() !== origDestPath()
+    editDestPath() !== origDestPath() ||
+    !setsEqual(editAllowedExts(), origAllowedExts())
   );
 
   // Preferences override
@@ -65,9 +84,12 @@ export const MappingSettings: Component = () => {
       setEditName(detail.mapping.name);
       setEditSourcePath(detail.mapping.sourcePath);
       setEditDestPath(detail.mapping.destPath);
+      const exts = detail.mapping.allowedExtensions;
+      setEditAllowedExts(exts);
       setOrigName(detail.mapping.name);
       setOrigSourcePath(detail.mapping.sourcePath);
       setOrigDestPath(detail.mapping.destPath);
+      setOrigAllowedExts(exts);
     } catch (e) {
       setLoadError((e as Error).message);
     } finally {
@@ -88,11 +110,14 @@ export const MappingSettings: Component = () => {
         name: editName().trim(),
         sourcePath: editSourcePath(),
         destPath: editDestPath(),
+        allowedExtensions: editAllowedExts(),
       });
       setMappingName(updated.name);
       setOrigName(updated.name);
       setOrigSourcePath(updated.sourcePath);
       setOrigDestPath(updated.destPath);
+      setOrigAllowedExts(updated.allowedExtensions);
+      setEditAllowedExts(updated.allowedExtensions);
       setEditName(updated.name);
       setEditSavedAt(Date.now());
     } catch (e) {
@@ -204,6 +229,23 @@ export const MappingSettings: Component = () => {
                 );
               }}
             </Show>
+            <div>
+              <h3>ALLOWED ALT EXTENSIONS</h3>
+              <p class="text-dim" style={{ margin: "0 0 6px" }}>
+                Dest-side formats accepted as equivalents of a source file with
+                the same basename. E.g. add <code>rvz</code> so that a converted
+                <code> Game.rvz</code> in dest is treated as the same file as
+                <code> Game.zip</code> in source — sync won't recopy or remove
+                it. Leave empty to require exact filename matches.
+              </p>
+              <TagInput
+                items={editAllowedExts()}
+                placeholder="e.g. rvz, cso, chd (press , or Enter)"
+                disabled={editSaving()}
+                onChange={setEditAllowedExts}
+                normalize={normalizeExtension}
+              />
+            </div>
             <Show when={editError()}>
               <div class="text-danger">! {editError()}</div>
             </Show>
@@ -251,9 +293,7 @@ export const MappingSettings: Component = () => {
                           </li>
                         }
                       >
-                        {globalPrefs().map((p) => (
-                          <li>{p}</li>
-                        ))}
+                        <For each={globalPrefs()}>{(p) => <li>{p}</li>}</For>
                       </Show>
                     </ol>
                   </div>

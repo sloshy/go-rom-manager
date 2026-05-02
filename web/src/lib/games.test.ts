@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoSelect, groupFiles, parseName } from "./games";
+import { autoSelect, fileExt, fileStem, groupFiles, isAllowedExt, parseName } from "./games";
 
 describe("parseName", () => {
   it("splits prefix and tags", () => {
@@ -103,5 +103,37 @@ describe("autoSelect", () => {
   it("filters Demo/Proto regardless of preferences", () => {
     const files = ["Example Game 1 (Japan) (Demo).zip", "Example Game 1 (Japan).zip"];
     expect(autoSelect(files, ["Japan"])).toBe("Example Game 1 (Japan).zip");
+  });
+});
+
+describe("fileStem / fileExt", () => {
+  it("strips the trailing extension", () => {
+    expect(fileStem("Game.zip")).toBe("Game");
+    expect(fileStem("Sample Game (USA).rvz")).toBe("Sample Game (USA)");
+  });
+
+  it("returns the bare name when there's no extension", () => {
+    expect(fileStem("README")).toBe("README");
+    expect(fileExt("README")).toBe("");
+  });
+
+  it("treats leading-dot files as having no extension (stem = full name)", () => {
+    expect(fileStem(".gitignore")).toBe(".gitignore");
+    expect(fileExt(".gitignore")).toBe("");
+  });
+
+  it("lowercases the extension", () => {
+    expect(fileExt("Game.RVZ")).toBe(".rvz");
+  });
+});
+
+describe("isAllowedExt", () => {
+  it("matches case-insensitively against a normalized allow list", () => {
+    expect(isAllowedExt("Game.RVZ", [".rvz"])).toBe(true);
+    expect(isAllowedExt("Game.zip", [".rvz", ".cso"])).toBe(false);
+  });
+
+  it("returns false for empty allow list", () => {
+    expect(isAllowedExt("Game.rvz", [])).toBe(false);
   });
 });

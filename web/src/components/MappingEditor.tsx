@@ -74,11 +74,19 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
           groups={editor.destProjectionGroups()}
           filesToRemove={editor.filesToRemove()}
           extraFiles={editor.extraFiles()}
-          isFileSelected={(f) => editor.isFileSelected(f)}
-          onToggleFile={(filename) => editor.toggleFile(filename)}
-          onClearPrefix={(files) => editor.clearFiles(files)}
-          onToggleAllOn={(_groups, removals) => editor.restoreFiles(removals)}
-          onToggleAllOff={(groups) => editor.deselectAllGroups(groups.map((g) => g.files))}
+          // Dest-side displays may show alt-ext filenames (e.g. Game.rvz)
+          // while state.selected is keyed on source filenames (Game.zip);
+          // every interaction goes through destNameToSource so toggles
+          // and selection checks read/write the right key.
+          isFileSelected={(f) => editor.isFileSelected(editor.destNameToSource(f))}
+          onToggleFile={(filename) => editor.toggleFile(editor.destNameToSource(filename))}
+          onClearPrefix={(files) => editor.clearFiles(files.map(editor.destNameToSource))}
+          onToggleAllOn={(_groups, removals) =>
+            editor.restoreFiles(removals.map(editor.destNameToSource))
+          }
+          onToggleAllOff={(groups) =>
+            editor.deselectAllGroups(groups.map((g) => g.files.map(editor.destNameToSource)))
+          }
         />
       </div>
 

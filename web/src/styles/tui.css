@@ -362,6 +362,59 @@
   padding: 4px 10px;
 }
 
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-panel-alt);
+  border: 2px solid var(--border);
+  min-height: 36px;
+}
+.tag-input.is-disabled {
+  opacity: 0.6;
+}
+.tag-input__field {
+  flex: 1;
+  min-width: 8rem;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  outline: none;
+  font: inherit;
+  padding: 2px 0;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 8px;
+  background: var(--bg-panel);
+  border: 2px solid var(--accent-amber);
+  color: var(--accent-amber);
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+.tag-chip__text {
+  user-select: text;
+}
+.tag-chip__remove {
+  background: transparent;
+  border: none;
+  color: var(--accent-amber);
+  cursor: pointer;
+  padding: 0 4px;
+  font: inherit;
+  line-height: 1;
+}
+.tag-chip__remove:hover:not(:disabled) {
+  color: var(--danger);
+}
+.tag-chip__remove:disabled {
+  cursor: not-allowed;
+}
+
 .tui-button--save {
   color: var(--accent-green);
   background: var(--bg-panel-alt);

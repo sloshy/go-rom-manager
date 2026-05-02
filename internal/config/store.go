@@ -18,13 +18,22 @@ import (
 // Preferences is an optional per-mapping override of the auto-select
 // priority order. A nil pointer means "inherit the global preferences";
 // a non-nil slice (even if empty) is treated as an explicit override.
+//
+// AllowedExtensions is the list of dest-side file extensions that
+// should be considered alt-format counterparts of a source file sharing
+// the same basename — e.g. a source "Game.zip" and a dest "Game.rvz"
+// with ".rvz" in the list count as the same file for sync purposes (no
+// copy, no delete). Each entry is normalized to lowercase with a leading
+// dot (e.g. ".rvz"). Always serialized as an array (possibly empty) so
+// API consumers don't need to handle a missing field.
 type Mapping struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	SourcePath   string            `json:"sourcePath"`
-	DestPath     string            `json:"destPath"`
-	ManualGroups map[string]string `json:"manualGroups"`
-	Preferences  *[]string         `json:"preferences,omitempty"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	SourcePath        string            `json:"sourcePath"`
+	DestPath          string            `json:"destPath"`
+	ManualGroups      map[string]string `json:"manualGroups"`
+	Preferences       *[]string         `json:"preferences,omitempty"`
+	AllowedExtensions []string          `json:"allowedExtensions"`
 }
 
 // Store persists the list of mappings and the global preferences list to
@@ -67,6 +76,14 @@ func (s *Store) load() error {
 		return fmt.Errorf("parse %s: %w", s.path, err)
 	}
 	s.mappings = wrapper.Mappings
+	for i := range s.mappings {
+		if s.mappings[i].AllowedExtensions == nil {
+			s.mappings[i].AllowedExtensions = []string{}
+		}
+		if s.mappings[i].ManualGroups == nil {
+			s.mappings[i].ManualGroups = map[string]string{}
+		}
+	}
 	s.globalPreferences = wrapper.GlobalPreferences
 	return nil
 }
@@ -131,6 +148,9 @@ func (s *Store) Add(m Mapping) (Mapping, error) {
 	m.ID = id
 	if m.ManualGroups == nil {
 		m.ManualGroups = map[string]string{}
+	}
+	if m.AllowedExtensions == nil {
+		m.AllowedExtensions = []string{}
 	}
 	s.mappings = append(s.mappings, m)
 	if err := s.saveLocked(); err != nil {
