@@ -151,7 +151,7 @@
 .app-main {
   flex: 1;
   min-height: 0;
-  padding: 18px;
+  padding: 18px 18px 62px;
   display: flex;
   flex-direction: column;
   gap: 14px;

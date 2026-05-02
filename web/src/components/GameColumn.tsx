@@ -107,7 +107,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
         <span>{props.title}</span>
         <span class="text-dim">{props.groups.length} TITLES</span>
       </div>
-      <div style={{ padding: "10px 10px 54px", flex: 1, "overflow-y": "auto", "min-height": 0 }}>
+      <div style={{ padding: "10px", flex: 1, "overflow-y": "auto", "min-height": 0 }}>
         <FilterChipInput chips={filterChips()} onChange={setFilterChips}>
           <TagFilterMenu
             tokens={tokens()}
