@@ -68,11 +68,15 @@ docker run --rm \
   -v /path/to/dest:/dest \
   -v "$(pwd)/rom-manager-data":/data \
   ghcr.io/sloshy/go-rom-manager:latest \
-  --source /roms --dest /dest
+  --source /roms --dest /dest --config /data/mappings.json
 ```
 
 Note that `/data` must be writable by that UID — `mkdir rom-manager-data`
-on the host before the first run (or `chown` it to match).
+on the host before the first run (or `chown` it to match). Passing
+`--config /data/mappings.json` is required when you supply your own
+arguments, because positional args after the image name replace the
+Dockerfile `CMD` defaults; without it the binary falls back to
+`$HOME/.config/...` which the overridden user can't write.
 
 To build locally:
 
