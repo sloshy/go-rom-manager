@@ -20,8 +20,57 @@ export interface TagInputProps {
 const defaultNormalize = (raw: string) => raw.trim();
 
 /**
- * Tag-style multi-value input: typing a comma (or pressing Enter) commits
- * the current draft as a chip with an × to remove. Backspace on an empty
+ * Tokenizes the input string, splitting on unquoted commas and spaces.
+ * A `"..."` span is treated as one token whose body may contain spaces
+ * (quotes are stripped). A bare word or an unclosed `"...` is left as
+ * `remainder` so the user can keep typing.
+ */
+function tokenizeTagInput(input: string): { tokens: string[]; remainder: string } {
+  const tokens: string[] = [];
+  let i = 0;
+
+  while (i < input.length) {
+    while (i < input.length && (input[i] === " " || input[i] === ",")) i++;
+    if (i >= input.length) break;
+
+    if (input[i] === '"') {
+      const tokenStart = i;
+      i++;
+      while (i < input.length && input[i] !== '"') i++;
+      if (i >= input.length) {
+        return { tokens, remainder: input.slice(tokenStart) };
+      }
+      tokens.push(input.slice(tokenStart + 1, i));
+      i++;
+    } else {
+      const start = i;
+      while (i < input.length && input[i] !== "," && input[i] !== " ") i++;
+      if (i >= input.length) {
+        return { tokens, remainder: input.slice(start) };
+      }
+      tokens.push(input.slice(start, i));
+    }
+  }
+
+  return { tokens, remainder: "" };
+}
+
+/**
+ * If `raw` (after trimming) is fully wrapped in double-quotes, strips them.
+ * `"foo bar"` → `foo bar`. Unquoted or partially-quoted strings are
+ * returned trimmed but otherwise unchanged.
+ */
+function stripOuterQuotes(raw: string): string {
+  const t = raw.trim();
+  if (t.length >= 2 && t[0] === '"' && t[t.length - 1] === '"') return t.slice(1, -1);
+  return t;
+}
+
+/**
+ * Tag-style multi-value input: typing a comma or space commits the current
+ * draft as a chip with an × to remove. Wrapping text in `"..."` lets it
+ * contain spaces as a single chip (quotes are stripped on commit). Pressing
+ * Enter or blurring commits whatever is in the field. Backspace on an empty
  * field removes the last chip. Duplicates (post-normalize) are silently
  * dropped so paste-friendly inputs like "rvz, RVZ" round-trip cleanly.
  */
@@ -42,7 +91,7 @@ export const TagInput: Component<TagInputProps> = (props) => {
   const norm = (raw: string) => (props.normalize ?? defaultNormalize)(raw);
 
   const commit = (raw: string) => {
-    const value = norm(raw);
+    const value = norm(stripOuterQuotes(raw));
     if (!value) return;
     if (props.items.includes(value)) return;
     props.onChange([...props.items, value]);
@@ -50,12 +99,11 @@ export const TagInput: Component<TagInputProps> = (props) => {
 
   const onInput = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
     const raw = e.currentTarget.value;
-    if (raw.includes(",")) {
-      const parts = raw.split(",");
-      const tail = parts.pop() ?? "";
-      for (const p of parts) commit(p);
-      setDraft(tail);
-      if (inputRef) inputRef.value = tail;
+    const { tokens, remainder } = tokenizeTagInput(raw);
+    if (tokens.length > 0) {
+      for (const t of tokens) commit(t);
+      setDraft(remainder);
+      if (inputRef) inputRef.value = remainder;
     } else {
       setDraft(raw);
     }

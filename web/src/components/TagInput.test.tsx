@@ -148,4 +148,49 @@ describe("TagInput", () => {
     fireEvent.input(input, { target: { value: "rvz," } });
     expect(input.value).toBe("");
   });
+
+  it("commits the draft as a chip when a space is typed", () => {
+    const [items, setItems] = createSignal<string[]>([]);
+    const { getByRole } = render(() => (
+      <TagInput items={items()} onChange={setItems} />
+    ));
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "bin " } });
+    expect(items()).toEqual(["bin"]);
+    expect(input.value).toBe("");
+  });
+
+  it("commits multiple chips from a space-separated paste", () => {
+    const [items, setItems] = createSignal<string[]>([]);
+    const { getByRole } = render(() => (
+      <TagInput items={items()} onChange={setItems} />
+    ));
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "rvz cso chd" } });
+    // Last segment ("chd") stays in the draft; only "rvz" and "cso" commit.
+    expect(items()).toEqual(["rvz", "cso"]);
+    expect(input.value).toBe("chd");
+  });
+
+  it("commits a quoted string containing a space as a single chip", () => {
+    const [items, setItems] = createSignal<string[]>([]);
+    const { getByRole } = render(() => (
+      <TagInput items={items()} onChange={setItems} />
+    ));
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: '"my format.zip"' } });
+    expect(items()).toEqual(["my format.zip"]);
+    expect(input.value).toBe("");
+  });
+
+  it("keeps an unclosed quoted string in the draft", () => {
+    const [items, setItems] = createSignal<string[]>([]);
+    const { getByRole } = render(() => (
+      <TagInput items={items()} onChange={setItems} />
+    ));
+    const input = getByRole("textbox") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: '"my ext' } });
+    expect(items()).toEqual([]);
+    expect(input.value).toBe('"my ext');
+  });
 });

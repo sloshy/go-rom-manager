@@ -240,7 +240,7 @@ export const MappingSettings: Component = () => {
               </p>
               <TagInput
                 items={editAllowedExts()}
-                placeholder="e.g. rvz, cso, chd (press , or Enter)"
+                placeholder="e.g. rvz cso chd (space, comma, or Enter)"
                 disabled={editSaving()}
                 onChange={setEditAllowedExts}
                 normalize={normalizeExtension}
