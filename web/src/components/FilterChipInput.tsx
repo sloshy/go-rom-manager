@@ -88,9 +88,6 @@ export const FilterChipInput: Component<FilterChipInputProps> = (props) => {
 
   return (
     <div class="row" style={{ "margin-bottom": "8px" }}>
-      <span class="text-dim" style={{ "min-width": "60px" }}>
-        FILTER &gt;
-      </span>
       <div class="filter-chip-input" role="group" style={{ flex: 1 }}>
         <For each={props.chips}>
           {(chip, index) => (

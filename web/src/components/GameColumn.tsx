@@ -2,7 +2,8 @@ import { Component, For, Show, createMemo, createSignal } from "solid-js";
 import { FilterChipInput } from "./FilterChipInput";
 import { GameRow } from "./GameRow";
 import { TagFilterMenu } from "./TagFilterMenu";
-import type { GameGroup } from "../lib/games";
+import { ExtFilterMenu, type ExtFilter } from "./ExtFilterMenu";
+import { fileExt, type GameGroup } from "../lib/games";
 import {
   collectTagTokens,
   fileMatchesTags,
@@ -42,17 +43,40 @@ export interface GameColumnProps {
 export const GameColumn: Component<GameColumnProps> = (props) => {
   const [filterChips, setFilterChips] = createSignal<FilterChip[]>([]);
   const [tagFilters, setTagFilters] = createSignal<TagFilters>({});
+  const [extFilter, setExtFilter] = createSignal<ExtFilter | null>(null);
   const [filterGroupedItems, setFilterGroupedItems] = createSignal(false);
 
   const tagsActive = createMemo(() => hasActiveTagFilters(tagFilters()));
 
-  const tokens = createMemo(() =>
-    collectTagTokens([
-      ...props.groups.flatMap((g) => g.files),
-      ...(props.filesToRemove ?? []),
-      ...(props.extraFiles ?? []),
-    ]),
-  );
+  const allColumnFiles = createMemo(() => [
+    ...props.groups.flatMap((g) => g.files),
+    ...(props.filesToRemove ?? []),
+    ...(props.extraFiles ?? []),
+  ]);
+
+  const tokens = createMemo(() => collectTagTokens(allColumnFiles()));
+
+  const extensions = createMemo(() => {
+    const exts = new Set<string>();
+    for (const f of allColumnFiles()) {
+      const ext = fileExt(f);
+      if (ext) exts.add(ext);
+    }
+    return [...exts].sort();
+  });
+
+  const fileMatchesExt = (filename: string, ef: ExtFilter | null): boolean => {
+    if (!ef) return true;
+    const ext = fileExt(filename);
+    return ef.state === "positive" ? ext === ef.ext : ext !== ef.ext;
+  };
+
+  const groupMatchesExt = (files: string[], ef: ExtFilter | null): boolean => {
+    if (!ef) return true;
+    return ef.state === "positive"
+      ? files.some((f) => fileExt(f) === ef.ext)
+      : files.every((f) => fileExt(f) !== ef.ext);
+  };
 
   /**
    * Visible groups are filtered first by prefix expression, then by tags.
@@ -66,21 +90,26 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
   const visibleGroups = createMemo<GameGroup[]>(() => {
     const chips = filterChips();
     const tags = tagFilters();
+    const ef = extFilter();
     const grouped = filterGroupedItems();
     const tagsOn = tagsActive();
 
     const out: GameGroup[] = [];
     for (const g of props.groups) {
       if (!matchesChips(g.prefix, chips)) continue;
-      if (!tagsOn) {
+      if (!tagsOn && !ef) {
         out.push(g);
         continue;
       }
       if (grouped) {
-        const files = g.files.filter((f) => fileMatchesTags(f, tags));
+        let files = g.files;
+        if (tagsOn) files = files.filter((f) => fileMatchesTags(f, tags));
+        if (ef) files = files.filter((f) => fileMatchesExt(f, ef));
         if (files.length === 0) continue;
         out.push({ prefix: g.prefix, files });
-      } else if (groupMatchesTags(g.files, tags)) {
+      } else {
+        if (tagsOn && !groupMatchesTags(g.files, tags)) continue;
+        if (!groupMatchesExt(g.files, ef)) continue;
         out.push(g);
       }
     }
@@ -89,8 +118,9 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
 
   const flatFileVisible = (f: string): boolean => {
     if (!matchesChips(f, filterChips())) return false;
-    if (!tagsActive()) return true;
-    return fileMatchesTags(f, tagFilters());
+    if (tagsActive() && !fileMatchesTags(f, tagFilters())) return false;
+    if (!fileMatchesExt(f, extFilter())) return false;
+    return true;
   };
 
   const visibleRemovals = createMemo(() =>
@@ -109,6 +139,11 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
       </div>
       <div style={{ padding: "10px 10px 0" }}>
         <FilterChipInput chips={filterChips()} onChange={setFilterChips}>
+          <ExtFilterMenu
+            extensions={extensions()}
+            filter={extFilter()}
+            onFilterChange={setExtFilter}
+          />
           <TagFilterMenu
             tokens={tokens()}
             filters={tagFilters()}

@@ -17,6 +17,8 @@ export interface GameGroup {
 
 const KNOWN_EXTS = [".zip", ".7z", ".rar", ".bin", ".smc", ".sfc", ".gen", ".md", ".n64", ".z64", ".nes"];
 
+const COMPOUND_EXTS = [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst"] as const;
+
 /**
  * Strip the trailing ROM extension from a filename so the tag-parsing
  * regex doesn't mistake it for a parenthesised group. Used ONLY by
@@ -37,11 +39,15 @@ function trimExt(name: string): string {
 }
 
 /**
- * Returns the filename with its trailing extension removed. Mirrors Go's
- * `filepath.Ext` semantics: takes everything after the last dot, only if
- * that dot isn't the leading character.
+ * Returns the filename with its trailing extension removed. Recognises
+ * compound extensions (e.g. `.tar.gz`) as a single unit so that
+ * `fileStem(f) + fileExt(f) === f` holds for all inputs.
  */
 export function fileStem(filename: string): string {
+  const lower = filename.toLowerCase();
+  for (const ext of COMPOUND_EXTS) {
+    if (lower.endsWith(ext)) return filename.slice(0, filename.length - ext.length);
+  }
   const dot = filename.lastIndexOf(".");
   if (dot <= 0) return filename;
   return filename.slice(0, dot);
@@ -49,9 +55,15 @@ export function fileStem(filename: string): string {
 
 /**
  * Returns the lowercase extension (including the leading dot) or the
- * empty string for files with no dotted suffix.
+ * empty string for files with no dotted suffix. Compound extensions such
+ * as `.tar.gz` are returned as a single token rather than just the last
+ * segment.
  */
 export function fileExt(filename: string): string {
+  const lower = filename.toLowerCase();
+  for (const ext of COMPOUND_EXTS) {
+    if (lower.endsWith(ext)) return ext;
+  }
   const dot = filename.lastIndexOf(".");
   if (dot <= 0) return "";
   return filename.slice(dot).toLowerCase();

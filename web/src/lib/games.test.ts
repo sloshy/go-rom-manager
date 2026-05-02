@@ -125,6 +125,25 @@ describe("fileStem / fileExt", () => {
   it("lowercases the extension", () => {
     expect(fileExt("Game.RVZ")).toBe(".rvz");
   });
+
+  it("treats compound extensions as a single token", () => {
+    expect(fileExt("Example (USA).tar.gz")).toBe(".tar.gz");
+    expect(fileExt("Example (USA).tar.bz2")).toBe(".tar.bz2");
+    expect(fileExt("Example (USA).tar.xz")).toBe(".tar.xz");
+    expect(fileExt("Example (USA).tar.zst")).toBe(".tar.zst");
+    expect(fileStem("Example (USA).tar.gz")).toBe("Example (USA)");
+  });
+
+  it("stem + ext round-trips for both simple and compound extensions", () => {
+    for (const f of ["Game.zip", "Sample (USA).rvz", "Archive (World).tar.gz"]) {
+      expect(fileStem(f) + fileExt(f)).toBe(f);
+    }
+  });
+
+  it("compound extension match is case-insensitive", () => {
+    expect(fileExt("Example.TAR.GZ")).toBe(".tar.gz");
+    expect(fileStem("Example.TAR.GZ")).toBe("Example");
+  });
 });
 
 describe("isAllowedExt", () => {
