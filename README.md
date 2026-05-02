@@ -55,6 +55,25 @@ mappings file at `/data/mappings.json` (volume `rom-manager-data`).
 Mount your source dir read-only — sync only ever writes into the
 destination.
 
+If the folder browser inside the UI shows your mounted directories as
+empty, the container's `nonroot` user (UID 65532) likely can't read
+host-owned files. Run the container as your own UID/GID so the bind
+mounts are accessible:
+
+```bash
+docker run --rm \
+  -p 8080:8080 \
+  --user "$(id -u):$(id -g)" \
+  -v /path/to/roms:/roms:ro \
+  -v /path/to/dest:/dest \
+  -v "$(pwd)/rom-manager-data":/data \
+  ghcr.io/sloshy/go-rom-manager:latest \
+  --source /roms --dest /dest
+```
+
+Note that `/data` must be writable by that UID — `mkdir rom-manager-data`
+on the host before the first run (or `chown` it to match).
+
 To build locally:
 
 ```bash
