@@ -2,6 +2,9 @@
   background: var(--bg-panel);
   border: 2px solid var(--border);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .tui-panel::after {
   content: "";
@@ -123,7 +126,7 @@
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .app-header {
@@ -147,10 +150,12 @@
 
 .app-main {
   flex: 1;
+  min-height: 0;
   padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
 }
 
 .app-footer {
@@ -160,6 +165,11 @@
   display: flex;
   align-items: center;
   gap: 14px;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
 }
 
 .row {

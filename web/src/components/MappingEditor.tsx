@@ -56,7 +56,7 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
         <div class="text-danger">! {editor.state.error}</div>
       </Show>
 
-      <div class="tui-grid-2">
+      <div class="tui-grid-2" style={{ flex: 1, "min-height": 0, overflow: "hidden" }}>
         <GameColumn
           title="SOURCE // ROMS"
           side="source"
