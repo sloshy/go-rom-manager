@@ -107,7 +107,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
         <span>{props.title}</span>
         <span class="text-dim">{props.groups.length} TITLES</span>
       </div>
-      <div style={{ padding: "10px", flex: 1, "overflow-y": "auto", "min-height": 0 }}>
+      <div style={{ padding: "10px 10px 0" }}>
         <FilterChipInput chips={filterChips()} onChange={setFilterChips}>
           <TagFilterMenu
             tokens={tokens()}
@@ -118,7 +118,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
           />
         </FilterChipInput>
         <Show when={props.onToggleAllOn || props.onToggleAllOff}>
-          <div class="row" style={{ "margin-bottom": "8px", gap: "6px" }}>
+          <div class="row" style={{ "margin-top": "8px", gap: "6px" }}>
             <Show when={props.onToggleAllOn}>
               <button
                 class="tui-button"
@@ -137,6 +137,8 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
             </Show>
           </div>
         </Show>
+      </div>
+      <div style={{ flex: 1, "overflow-y": "auto", "min-height": 0, padding: "8px 10px 10px" }}>
         <div role="list" aria-label={`${props.side} games`}>
           <For each={visibleGroups()}>
             {(g) => (
