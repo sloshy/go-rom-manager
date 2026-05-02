@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { createSignal } from "solid-js";
 import { render, fireEvent } from "@solidjs/testing-library";
+import userEvent from "@testing-library/user-event";
 import { TagFilterMenu } from "./TagFilterMenu";
+import type { TagFilters } from "../lib/tags";
 
 describe("TagFilterMenu", () => {
   it("hides the panel until the trigger is clicked", () => {
@@ -125,5 +128,27 @@ describe("TagFilterMenu", () => {
     fireEvent.click(getByText(/TAG FILTERS/));
     fireEvent.click(getByText("CLEAR"));
     expect(fn).toHaveBeenCalledWith({});
+  });
+
+  it("keeps the panel open after CLEAR is pressed", async () => {
+    // Use userEvent (not fireEvent) so composedPath() is correctly populated
+    // and the document click listener sees the real event path — that's what
+    // distinguishes old e.target containment (broken) from composedPath (fixed).
+    // Use a real signal so SolidJS reactively removes the CLEAR button when
+    // filters clear, reproducing the exact DOM mutation that caused the bug.
+    const user = userEvent.setup();
+    const [filters, setFilters] = createSignal<TagFilters>({ USA: "positive" });
+    const { getByText, queryByRole } = render(() => (
+      <TagFilterMenu
+        tokens={["USA"]}
+        filters={filters()}
+        onFilterChange={setFilters}
+        filterGroupedItems={false}
+        onToggleGroupedItems={() => {}}
+      />
+    ));
+    await user.click(getByText(/TAG FILTERS/));
+    await user.click(getByText("CLEAR"));
+    expect(queryByRole("dialog", { name: /tag filters/i })).toBeInTheDocument();
   });
 });

@@ -29,7 +29,7 @@ export const TagFilterMenu: Component<TagFilterMenuProps> = (props) => {
   const activeCount = createMemo(() => activeTagFilterCount(props.filters));
 
   const onDocClick = (e: MouseEvent) => {
-    if (!rootRef || rootRef.contains(e.target as Node)) return;
+    if (!rootRef || e.composedPath().includes(rootRef)) return;
     setOpen(false);
   };
 

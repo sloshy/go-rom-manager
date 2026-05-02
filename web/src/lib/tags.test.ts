@@ -189,7 +189,7 @@ describe("matchesChips", () => {
 });
 
 describe("extractTagTokens", () => {
-  it("splits parenthesised groups by comma and space", () => {
+  it("splits parenthesised groups by comma", () => {
     expect(extractTagTokens("Example (USA, Europe).zip")).toEqual(["USA", "Europe"]);
   });
 
@@ -205,8 +205,20 @@ describe("extractTagTokens", () => {
     expect(extractTagTokens("Plain Title.zip")).toEqual([]);
   });
 
-  it("splits Rev N into Rev and N tokens", () => {
-    expect(extractTagTokens("Example (USA) (Rev 2).zip")).toEqual(["USA", "Rev", "2"]);
+  it("keeps Rev N as a single token (does not split on spaces)", () => {
+    expect(extractTagTokens("Example (USA) (Rev 2).zip")).toEqual(["USA", "Rev 2"]);
+  });
+
+  it("treats a bare number alone in parentheses as a token", () => {
+    expect(extractTagTokens("Example (1).zip")).toEqual(["1"]);
+  });
+
+  it("treats a comma-separated number as its own token", () => {
+    expect(extractTagTokens("Example (Rev 1, Beta).zip")).toEqual(["Rev 1", "Beta"]);
+  });
+
+  it("handles comma-separated tokens with no surrounding spaces", () => {
+    expect(extractTagTokens("Example (En,Fr,De).zip")).toEqual(["En", "Fr", "De"]);
   });
 });
 
@@ -235,6 +247,11 @@ describe("fileMatchesTags", () => {
 
   it("ignores tags marked off", () => {
     expect(fileMatchesTags("Example (USA).zip", { USA: "off" })).toBe(true);
+  });
+
+  it("matches a multi-word tag token like 'Rev 2' as one unit", () => {
+    expect(fileMatchesTags("Example (USA) (Rev 2).zip", { "Rev 2": "positive" })).toBe(true);
+    expect(fileMatchesTags("Example (USA) (Rev 1).zip", { "Rev 2": "positive" })).toBe(false);
   });
 });
 

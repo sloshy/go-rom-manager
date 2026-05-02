@@ -143,15 +143,16 @@ export function matchesChips(text: string, chips: readonly FilterChip[]): boolea
 
 /**
  * Extract every (...) / [...] body from a filename and split each on
- * comma+whitespace, returning the deduped (case-insensitive) tokens in
- * source order. `(USA, Europe)` → ["USA", "Europe"]. `(Rev 2)` → ["Rev",
- * "2"], per the user's "split by space" rule.
+ * commas, returning the deduped (case-insensitive) tokens in source order.
+ * `(USA, Europe)` → ["USA", "Europe"]. `(Rev 2)` → ["Rev 2"] — spaces
+ * within a comma-separated part are kept together so "Rev 1" is one token,
+ * not two. A bare number like `(1)` is still a token when alone.
  */
 export function extractTagTokens(filename: string): string[] {
   const tokens: string[] = [];
   const seen = new Set<string>();
   const add = (body: string) => {
-    for (const p of body.split(/[,\s]+/)) {
+    for (const p of body.split(/,/)) {
       const v = p.trim();
       if (!v) continue;
       const lower = v.toLowerCase();
