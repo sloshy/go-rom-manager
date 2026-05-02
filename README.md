@@ -124,6 +124,28 @@ You can override grouping (e.g. to merge a Japanese release into the
 same group as its Western counterpart) by right-clicking a source-side
 filename → **MERGE INTO GROUP...**.
 
+## Filtering
+
+Each editor column has a chip-style filter input next to a tag-filter
+dropdown.
+
+- **Multiple terms**: separate with spaces — `Mario Galaxy` keeps only
+  titles whose prefix contains both "Mario" and "Galaxy".
+- **Quoted phrases**: wrap in double quotes to keep internal whitespace
+  in one chip — `"Super Mario"` matches the literal phrase.
+- **Negation**: prefix a term with `-` to exclude matches —
+  `Mario -Demo` shows Mario titles that don't contain "Demo".
+- Each committed term shows up as a chip with an × to remove. Backspace
+  on an empty input removes the most recent chip.
+
+The **TAG FILTERS** dropdown next to the input lists every parenthesised
+or bracketed tag detected in the column (USA, Europe, Demo, Rev, ...).
+Click a tag to cycle **off → match → exclude**. The "Filter grouped
+items" toggle controls whether tag filters narrow the list at the group
+level (any-or-none) or within each group (filtering individual variants
+— in which case the auto-select also picks the best of the surviving
+ones).
+
 ## Tests
 
 ```bash

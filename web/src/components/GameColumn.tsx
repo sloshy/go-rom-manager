@@ -1,7 +1,17 @@
 import { Component, For, Show, createMemo, createSignal } from "solid-js";
-import { FilterBar } from "./FilterBar";
+import { FilterChipInput } from "./FilterChipInput";
 import { GameRow } from "./GameRow";
+import { TagFilterMenu } from "./TagFilterMenu";
 import type { GameGroup } from "../lib/games";
+import {
+  collectTagTokens,
+  fileMatchesTags,
+  groupMatchesTags,
+  hasActiveTagFilters,
+  matchesChips,
+  type FilterChip,
+  type TagFilters,
+} from "../lib/tags";
 
 export interface GameColumnProps {
   title: string;
@@ -30,22 +40,65 @@ export interface GameColumnProps {
 }
 
 export const GameColumn: Component<GameColumnProps> = (props) => {
-  const [filter, setFilter] = createSignal("");
+  const [filterChips, setFilterChips] = createSignal<FilterChip[]>([]);
+  const [tagFilters, setTagFilters] = createSignal<TagFilters>({});
+  const [filterGroupedItems, setFilterGroupedItems] = createSignal(false);
 
-  const matches = (prefix: string) => {
-    const f = filter().trim().toLowerCase();
-    if (!f) return true;
-    return prefix.toLowerCase().includes(f);
+  const tagsActive = createMemo(() => hasActiveTagFilters(tagFilters()));
+
+  const tokens = createMemo(() =>
+    collectTagTokens([
+      ...props.groups.flatMap((g) => g.files),
+      ...(props.filesToRemove ?? []),
+      ...(props.extraFiles ?? []),
+    ]),
+  );
+
+  /**
+   * Visible groups are filtered first by prefix expression, then by tags.
+   * With "Filter grouped items" off (the default), tag filters apply at
+   * group granularity (any-or-none) and the group's full file list is
+   * shown. With it on, individual files within each group are filtered;
+   * an empty group drops out and the now-narrowed `files` list flows
+   * through to GameRow + togglePrefix + Toggle-All-On so auto-select sees
+   * only the surviving variants.
+   */
+  const visibleGroups = createMemo<GameGroup[]>(() => {
+    const chips = filterChips();
+    const tags = tagFilters();
+    const grouped = filterGroupedItems();
+    const tagsOn = tagsActive();
+
+    const out: GameGroup[] = [];
+    for (const g of props.groups) {
+      if (!matchesChips(g.prefix, chips)) continue;
+      if (!tagsOn) {
+        out.push(g);
+        continue;
+      }
+      if (grouped) {
+        const files = g.files.filter((f) => fileMatchesTags(f, tags));
+        if (files.length === 0) continue;
+        out.push({ prefix: g.prefix, files });
+      } else if (groupMatchesTags(g.files, tags)) {
+        out.push(g);
+      }
+    }
+    return out;
+  });
+
+  const flatFileVisible = (f: string): boolean => {
+    if (!matchesChips(f, filterChips())) return false;
+    if (!tagsActive()) return true;
+    return fileMatchesTags(f, tagFilters());
   };
 
-  const visibleGroups = createMemo(() => props.groups.filter((g) => matches(g.prefix)));
-
   const visibleRemovals = createMemo(() =>
-    (props.filesToRemove ?? []).filter((f) => matches(f.toLowerCase())),
+    (props.filesToRemove ?? []).filter(flatFileVisible),
   );
 
   const visibleExtras = createMemo(() =>
-    (props.extraFiles ?? []).filter((f) => matches(f.toLowerCase())),
+    (props.extraFiles ?? []).filter(flatFileVisible),
   );
 
   return (
@@ -55,7 +108,15 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
         <span class="text-dim">{props.groups.length} TITLES</span>
       </div>
       <div style={{ padding: "10px" }}>
-        <FilterBar value={filter()} onInput={setFilter} />
+        <FilterChipInput chips={filterChips()} onChange={setFilterChips}>
+          <TagFilterMenu
+            tokens={tokens()}
+            filters={tagFilters()}
+            onFilterChange={setTagFilters}
+            filterGroupedItems={filterGroupedItems()}
+            onToggleGroupedItems={setFilterGroupedItems}
+          />
+        </FilterChipInput>
         <Show when={props.onToggleAllOn || props.onToggleAllOff}>
           <div class="row" style={{ "margin-bottom": "8px", gap: "6px" }}>
             <Show when={props.onToggleAllOn}>
