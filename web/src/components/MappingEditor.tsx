@@ -65,6 +65,8 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
           onTogglePrefix={(files) => editor.togglePrefix(files)}
           onToggleFile={(filename) => editor.toggleFile(filename)}
           onContextFile={handleContext}
+          onToggleAllOn={(groups) => editor.selectAllGroups(groups.map((g) => g.files))}
+          onToggleAllOff={(groups) => editor.deselectAllGroups(groups.map((g) => g.files))}
         />
         <GameColumn
           title="DEST // INTENDED"
@@ -75,6 +77,8 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
           isFileSelected={(f) => editor.isFileSelected(f)}
           onToggleFile={(filename) => editor.toggleFile(filename)}
           onClearPrefix={(files) => editor.clearFiles(files)}
+          onToggleAllOn={(_groups, removals) => editor.restoreFiles(removals)}
+          onToggleAllOff={(groups) => editor.deselectAllGroups(groups.map((g) => g.files))}
         />
       </div>
 

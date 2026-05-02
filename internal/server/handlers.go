@@ -230,6 +230,51 @@ func cleanPreferences(in []string) ([]string, error) {
 	return out, nil
 }
 
+type updateMappingReq struct {
+	Name       string `json:"name"`
+	SourcePath string `json:"sourcePath"`
+	DestPath   string `json:"destPath"`
+}
+
+func (s *Server) handleUpdateMapping(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	m, ok := s.store.Get(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "mapping not found")
+		return
+	}
+	var req updateMappingReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.Name == "" || req.SourcePath == "" || req.DestPath == "" {
+		writeError(w, http.StatusBadRequest, "name, sourcePath, destPath are required")
+		return
+	}
+	if _, err := fsutil.EnsureUnderRoot(req.SourcePath, s.cfg.Sources); err != nil {
+		writeError(w, http.StatusBadRequest, "sourcePath must be under a configured --source root")
+		return
+	}
+	if _, err := fsutil.EnsureUnderRoot(req.DestPath, s.cfg.Dests); err != nil {
+		writeError(w, http.StatusBadRequest, "destPath must be under a configured --dest root")
+		return
+	}
+	m.Name = req.Name
+	m.SourcePath = req.SourcePath
+	m.DestPath = req.DestPath
+	ok, err := s.store.Update(m)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "mapping not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
 func (s *Server) handleDeleteMapping(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ok, err := s.store.Delete(id)

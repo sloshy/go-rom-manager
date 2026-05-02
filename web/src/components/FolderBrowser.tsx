@@ -14,11 +14,18 @@ export interface FolderBrowserProps {
   roots: string[];
   /** Called whenever the highlighted path changes (including initial mount). */
   onSelect?: (path: string) => void;
+  /** Pre-select a specific root on mount (must be one of roots). */
+  initialRoot?: string;
+  /** Pre-navigate to this sub-path within initialRoot on mount. */
+  initialSub?: string;
 }
 
 export const FolderBrowser: Component<FolderBrowserProps> = (props) => {
-  const [activeRoot, setActiveRoot] = createSignal(props.roots[0] ?? "");
-  const [sub, setSub] = createSignal("");
+  const initialRoot = props.initialRoot && props.roots.includes(props.initialRoot)
+    ? props.initialRoot
+    : (props.roots[0] ?? "");
+  const [activeRoot, setActiveRoot] = createSignal(initialRoot);
+  const [sub, setSub] = createSignal(props.initialSub ?? "");
 
   const [data] = createResource(
     () => ({ root: activeRoot(), sub: sub() }),

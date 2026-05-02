@@ -37,6 +37,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/mappings", s.handleListMappings)
 	mux.HandleFunc("POST /api/mappings", s.handleCreateMapping)
 	mux.HandleFunc("GET /api/mappings/{id}", s.handleGetMapping)
+	mux.HandleFunc("PUT /api/mappings/{id}", s.handleUpdateMapping)
 	mux.HandleFunc("DELETE /api/mappings/{id}", s.handleDeleteMapping)
 	mux.HandleFunc("PUT /api/mappings/{id}/preferences", s.handleUpdateMappingPreferences)
 	mux.HandleFunc("POST /api/mappings/{id}/sync", s.handleSync)

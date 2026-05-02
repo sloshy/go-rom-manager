@@ -87,6 +87,9 @@ export const api = {
 
   getMapping: (id: string) => jsonFetch<MappingDetail>(`/api/mappings/${id}`),
 
+  updateMapping: (id: string, body: { name: string; sourcePath: string; destPath: string }) =>
+    jsonFetch<Mapping>(`/api/mappings/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+
   deleteMapping: (id: string) =>
     jsonFetch<void>(`/api/mappings/${id}`, { method: "DELETE" }),
 

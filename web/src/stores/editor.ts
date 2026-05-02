@@ -78,12 +78,15 @@ function togglePrefix(files: string[]) {
       const anySelected = files.some((f) => s.selected[f]);
       if (anySelected) {
         for (const f of files) delete s.selected[f];
+        s.dirty = true;
       } else {
         const prefs = s.detail?.effectivePreferences;
         const pick = autoSelect(files, prefs);
-        if (pick) s.selected[pick] = true;
+        if (pick && !s.selected[pick]) {
+          s.selected[pick] = true;
+          s.dirty = true;
+        }
       }
-      s.dirty = true;
     }),
   );
 }
@@ -92,8 +95,62 @@ function togglePrefix(files: string[]) {
 function clearFiles(files: string[]) {
   setState(
     produce((s) => {
-      for (const f of files) delete s.selected[f];
-      s.dirty = true;
+      let changed = false;
+      for (const f of files) {
+        if (s.selected[f]) { delete s.selected[f]; changed = true; }
+      }
+      if (changed) s.dirty = true;
+    }),
+  );
+}
+
+/** Source-side Toggle All On: force auto-select the best variant for each group. */
+function selectAllGroups(allGroupFiles: string[][]) {
+  setState(
+    produce((s) => {
+      const prefs = s.detail?.effectivePreferences;
+      let changed = false;
+      for (const files of allGroupFiles) {
+        const pick = autoSelect(files, prefs);
+        const currentlySelected = files.filter((f) => s.selected[f]);
+        const alreadyCorrect = pick
+          ? currentlySelected.length === 1 && currentlySelected[0] === pick
+          : currentlySelected.length === 0;
+        if (!alreadyCorrect) {
+          for (const f of files) delete s.selected[f];
+          if (pick) s.selected[pick] = true;
+          changed = true;
+        }
+      }
+      if (changed) s.dirty = true;
+    }),
+  );
+}
+
+/** Toggle All Off for either side: deselect every file in every group. */
+function deselectAllGroups(allGroupFiles: string[][]) {
+  setState(
+    produce((s) => {
+      let changed = false;
+      for (const files of allGroupFiles) {
+        for (const f of files) {
+          if (s.selected[f]) { delete s.selected[f]; changed = true; }
+        }
+      }
+      if (changed) s.dirty = true;
+    }),
+  );
+}
+
+/** Destination-side Toggle All On: re-add previously removed files to selected. */
+function restoreFiles(filenames: string[]) {
+  setState(
+    produce((s) => {
+      let changed = false;
+      for (const f of filenames) {
+        if (!s.selected[f]) { s.selected[f] = true; changed = true; }
+      }
+      if (changed) s.dirty = true;
     }),
   );
 }
@@ -101,9 +158,15 @@ function clearFiles(files: string[]) {
 function setManualGroup(filename: string, target: string) {
   setState(
     produce((s) => {
-      if (target === "") delete s.manualGroups[filename];
-      else s.manualGroups[filename] = target;
-      s.dirty = true;
+      if (target === "") {
+        if (s.manualGroups[filename] !== undefined) {
+          delete s.manualGroups[filename];
+          s.dirty = true;
+        }
+      } else if (s.manualGroups[filename] !== target) {
+        s.manualGroups[filename] = target;
+        s.dirty = true;
+      }
     }),
   );
 }
@@ -170,6 +233,9 @@ export const editor = {
   toggleFile,
   togglePrefix,
   clearFiles,
+  selectAllGroups,
+  deselectAllGroups,
+  restoreFiles,
   isFileSelected,
   setManualGroup,
   sync,

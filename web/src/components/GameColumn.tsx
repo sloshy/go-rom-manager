@@ -18,6 +18,15 @@ export interface GameColumnProps {
   /** Destination-side: clear all selected files in the displayed group. */
   onClearPrefix?: (files: string[]) => void;
   onContextFile?: (filename: string, evt: MouseEvent) => void;
+  /**
+   * Toggle All On: source = auto-select best variant per visible group;
+   * destination = restore visible files-to-remove back into selected.
+   * Receives the currently visible groups and removals so the handler can act
+   * only on what the filter shows.
+   */
+  onToggleAllOn?: (groups: GameGroup[], removals: string[]) => void;
+  /** Toggle All Off: deselect all files in every visible group. */
+  onToggleAllOff?: (groups: GameGroup[]) => void;
 }
 
 export const GameColumn: Component<GameColumnProps> = (props) => {
@@ -47,6 +56,26 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
       </div>
       <div style={{ padding: "10px" }}>
         <FilterBar value={filter()} onInput={setFilter} />
+        <Show when={props.onToggleAllOn || props.onToggleAllOff}>
+          <div class="row" style={{ "margin-bottom": "8px", gap: "6px" }}>
+            <Show when={props.onToggleAllOn}>
+              <button
+                class="tui-button"
+                onClick={() => props.onToggleAllOn!(visibleGroups(), visibleRemovals())}
+              >
+                TOGGLE ALL ON
+              </button>
+            </Show>
+            <Show when={props.onToggleAllOff}>
+              <button
+                class="tui-button tui-button--danger"
+                onClick={() => props.onToggleAllOff!(visibleGroups())}
+              >
+                TOGGLE ALL OFF
+              </button>
+            </Show>
+          </div>
+        </Show>
         <div role="list" aria-label={`${props.side} games`}>
           <For each={visibleGroups()}>
             {(g) => (

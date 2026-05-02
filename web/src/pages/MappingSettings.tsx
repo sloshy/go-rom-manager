@@ -1,78 +1,147 @@
-import { Component, Show, createSignal, onMount } from "solid-js";
+import { Component, Show, createMemo, createSignal, onMount } from "solid-js";
 import { A, useParams } from "@solidjs/router";
-import { api } from "../api/client";
+import { api, type AppConfigPayload } from "../api/client";
 import { PreferenceEditor } from "../components/PreferenceEditor";
+import { FolderBrowser } from "../components/FolderBrowser";
+
+function splitPath(fullPath: string, roots: string[]): { root: string; sub: string } {
+  for (const root of roots) {
+    if (fullPath === root) return { root, sub: "" };
+    if (fullPath.startsWith(root + "/")) return { root, sub: fullPath.slice(root.length + 1) };
+  }
+  return { root: roots[0] ?? "", sub: "" };
+}
 
 export const MappingSettings: Component = () => {
   const params = useParams<{ id: string }>();
+
+  // Shared
+  const [loading, setLoading] = createSignal(true);
+  const [loadError, setLoadError] = createSignal<string | null>(null);
   const [mappingName, setMappingName] = createSignal<string>("");
+
+  // Edit mapping details
+  const [config, setConfig] = createSignal<AppConfigPayload | null>(null);
+  const [editName, setEditName] = createSignal("");
+  const [editSourcePath, setEditSourcePath] = createSignal("");
+  const [editDestPath, setEditDestPath] = createSignal("");
+  const [origName, setOrigName] = createSignal("");
+  const [origSourcePath, setOrigSourcePath] = createSignal("");
+  const [origDestPath, setOrigDestPath] = createSignal("");
+  const [editSaving, setEditSaving] = createSignal(false);
+  const [editError, setEditError] = createSignal<string | null>(null);
+  const [editSavedAt, setEditSavedAt] = createSignal<number | null>(null);
+
+  const editDirty = createMemo(() =>
+    editName() !== origName() ||
+    editSourcePath() !== origSourcePath() ||
+    editDestPath() !== origDestPath()
+  );
+
+  // Preferences override
   const [globalPrefs, setGlobalPrefs] = createSignal<string[]>([]);
   const [override, setOverride] = createSignal<string[] | null>(null);
   const [items, setItems] = createSignal<string[]>([]);
-  const [loading, setLoading] = createSignal(true);
-  const [saving, setSaving] = createSignal(false);
-  const [dirty, setDirty] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
-  const [savedAt, setSavedAt] = createSignal<number | null>(null);
+  const [prefSaving, setPrefSaving] = createSignal(false);
+  const [prefDirty, setPrefDirty] = createSignal(false);
+  const [prefError, setPrefError] = createSignal<string | null>(null);
+  const [prefSavedAt, setPrefSavedAt] = createSignal<number | null>(null);
 
   onMount(async () => {
     try {
-      const [detail, settings] = await Promise.all([
+      const [detail, settings, cfg] = await Promise.all([
         api.getMapping(params.id!),
         api.getSettings(),
+        api.getConfig(),
       ]);
+
       setMappingName(detail.mapping.name);
       setGlobalPrefs(settings.preferences);
       const stored = detail.mapping.preferences ?? null;
       setOverride(stored);
       setItems(stored ?? settings.preferences);
+
+      setConfig(cfg);
+      setEditName(detail.mapping.name);
+      setEditSourcePath(detail.mapping.sourcePath);
+      setEditDestPath(detail.mapping.destPath);
+      setOrigName(detail.mapping.name);
+      setOrigSourcePath(detail.mapping.sourcePath);
+      setOrigDestPath(detail.mapping.destPath);
     } catch (e) {
-      setError((e as Error).message);
+      setLoadError((e as Error).message);
     } finally {
       setLoading(false);
     }
   });
 
-  const onChange = (next: string[]) => {
+  // Edit handlers
+  const saveEdit = async () => {
+    setEditError(null);
+    if (!editName().trim() || !editSourcePath() || !editDestPath()) {
+      setEditError("All fields required.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const updated = await api.updateMapping(params.id!, {
+        name: editName().trim(),
+        sourcePath: editSourcePath(),
+        destPath: editDestPath(),
+      });
+      setMappingName(updated.name);
+      setOrigName(updated.name);
+      setOrigSourcePath(updated.sourcePath);
+      setOrigDestPath(updated.destPath);
+      setEditName(updated.name);
+      setEditSavedAt(Date.now());
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // Preferences handlers
+  const onPrefsChange = (next: string[]) => {
     setItems(next);
-    setDirty(true);
+    setPrefDirty(true);
   };
 
   const enableOverride = () => {
-    // Seed the override with the current effective list as a starting point.
     setOverride([...items()]);
-    setDirty(true);
+    setPrefDirty(true);
   };
 
   const inheritGlobal = () => {
     setOverride(null);
     setItems([...globalPrefs()]);
-    setDirty(true);
+    setPrefDirty(true);
   };
 
   const isOverriding = () => override() !== null;
 
-  const save = async () => {
-    setError(null);
-    setSaving(true);
+  const savePrefs = async () => {
+    setPrefError(null);
+    setPrefSaving(true);
     try {
       const payload = isOverriding() ? items() : null;
       const result = await api.updateMappingPreferences(params.id!, payload);
       setOverride(result.mapping.preferences ?? null);
       setItems(result.effectivePreferences);
-      setDirty(false);
-      setSavedAt(Date.now());
+      setPrefDirty(false);
+      setPrefSavedAt(Date.now());
     } catch (e) {
-      setError((e as Error).message);
+      setPrefError((e as Error).message);
     } finally {
-      setSaving(false);
+      setPrefSaving(false);
     }
   };
 
   return (
     <div class="settings-page">
       <div class="row" style={{ "margin-bottom": "8px" }}>
-        <h2 style={{ margin: 0 }}>MAPPING PREFERENCES</h2>
+        <h2 style={{ margin: 0 }}>MAPPING SETTINGS</h2>
         <Show when={mappingName()}>
           <span class="text-dim" style={{ "margin-left": "12px" }}>// {mappingName()}</span>
         </Show>
@@ -81,16 +150,87 @@ export const MappingSettings: Component = () => {
         </A>
       </div>
 
+      <Show when={loadError()}>
+        <div class="text-danger">! {loadError()}</div>
+      </Show>
+
+      <div class="tui-panel" style={{ "margin-bottom": "16px" }}>
+        <div class="tui-titlebar">
+          <span>EDIT MAPPING</span>
+        </div>
+        <div style={{ padding: "16px", display: "flex", "flex-direction": "column", gap: "16px" }}>
+          <Show when={!loading()} fallback={<div class="text-dim">Loading...</div>}>
+            <div>
+              <label class="text-dim">NAME &gt;</label>
+              <input
+                type="text"
+                value={editName()}
+                onInput={(e) => setEditName(e.currentTarget.value)}
+                style={{ width: "100%", "margin-top": "4px" }}
+                placeholder="e.g. SNES, Genesis, GBA..."
+              />
+            </div>
+            <Show when={config()}>
+              {(cfg) => {
+                const srcInit = splitPath(editSourcePath(), cfg().sources);
+                const dstInit = splitPath(editDestPath(), cfg().dests);
+                return (
+                  <>
+                    <div>
+                      <h3>SOURCE FOLDER</h3>
+                      <FolderBrowser
+                        roots={cfg().sources}
+                        initialRoot={srcInit.root}
+                        initialSub={srcInit.sub}
+                        onSelect={setEditSourcePath}
+                      />
+                      <div class="text-dim" style={{ "margin-top": "4px" }}>
+                        Selected: <span class="text-green">{editSourcePath() || "(none)"}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <h3>DESTINATION FOLDER</h3>
+                      <FolderBrowser
+                        roots={cfg().dests}
+                        initialRoot={dstInit.root}
+                        initialSub={dstInit.sub}
+                        onSelect={setEditDestPath}
+                      />
+                      <div class="text-dim" style={{ "margin-top": "4px" }}>
+                        Selected: <span class="text-amber">{editDestPath() || "(none)"}</span>
+                      </div>
+                    </div>
+                  </>
+                );
+              }}
+            </Show>
+            <Show when={editError()}>
+              <div class="text-danger">! {editError()}</div>
+            </Show>
+            <div class="settings-actions">
+              <button
+                type="button"
+                class="tui-button tui-button--save"
+                disabled={editSaving() || !editDirty()}
+                onClick={saveEdit}
+              >
+                {editSaving() ? "SAVING..." : "SAVE"}
+              </button>
+              <Show when={editSavedAt() && !editDirty()}>
+                <span class="text-green">// SAVED</span>
+              </Show>
+            </div>
+          </Show>
+        </div>
+      </div>
+
       <div class="tui-panel">
         <div class="tui-titlebar">
           <span>{isOverriding() ? "OVERRIDE ACTIVE" : "INHERITING GLOBAL"}</span>
           <span class="text-dim">{isOverriding() ? "// per-mapping" : "// follow global"}</span>
         </div>
         <div class="panel-body">
-          <Show
-            when={!loading()}
-            fallback={<div class="text-dim">Loading...</div>}
-          >
+          <Show when={!loading()} fallback={<div class="text-dim">Loading...</div>}>
             <Show
               when={isOverriding()}
               fallback={
@@ -125,26 +265,26 @@ export const MappingSettings: Component = () => {
                 only. Edit, drag to reorder, add new tags, or revert to the
                 global list.
               </p>
-              <PreferenceEditor items={items()} onChange={onChange} disabled={saving()} />
+              <PreferenceEditor items={items()} onChange={onPrefsChange} disabled={prefSaving()} />
             </Show>
 
-            <Show when={error()}>
-              <div class="text-danger">! {error()}</div>
+            <Show when={prefError()}>
+              <div class="text-danger">! {prefError()}</div>
             </Show>
 
             <div class="settings-actions">
               <button
                 type="button"
                 class="tui-button tui-button--save"
-                disabled={saving() || !dirty()}
-                onClick={save}
+                disabled={prefSaving() || !prefDirty()}
+                onClick={savePrefs}
               >
-                {saving() ? "SAVING..." : "SAVE"}
+                {prefSaving() ? "SAVING..." : "SAVE"}
               </button>
               <Show
                 when={isOverriding()}
                 fallback={
-                  <button type="button" class="tui-button" disabled={saving()} onClick={enableOverride}>
+                  <button type="button" class="tui-button" disabled={prefSaving()} onClick={enableOverride}>
                     OVERRIDE FOR THIS MAPPING
                   </button>
                 }
@@ -152,13 +292,13 @@ export const MappingSettings: Component = () => {
                 <button
                   type="button"
                   class="tui-button tui-button--amber"
-                  disabled={saving()}
+                  disabled={prefSaving()}
                   onClick={inheritGlobal}
                 >
                   REVERT TO GLOBAL
                 </button>
               </Show>
-              <Show when={savedAt() && !dirty()}>
+              <Show when={prefSavedAt() && !prefDirty()}>
                 <span class="text-green">// SAVED</span>
               </Show>
             </div>
