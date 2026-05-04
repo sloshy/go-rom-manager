@@ -22,6 +22,9 @@ step() { printf '\n\033[1;36m>>> %s\033[0m\n' "$*"; }
 step "Frontend: install dependencies"
 (cd web && npm ci)
 
+step "Format"
+./scripts/format.sh
+
 if [[ $SKIP_TESTS -eq 0 ]]; then
   step "Frontend: typecheck"
   (cd web && npm run typecheck)

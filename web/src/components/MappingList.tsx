@@ -1,10 +1,10 @@
-import { Component, For, Show } from "solid-js";
-import type { Mapping } from "../api/client";
+import { Component, For, Show } from 'solid-js'
+import type { Mapping } from '../api/client'
 
 export interface MappingListProps {
-  mappings: Mapping[];
-  onOpen: (id: string) => void;
-  onDelete?: (id: string) => void;
+  mappings: Mapping[]
+  onOpen: (id: string) => void
+  onDelete?: (id: string) => void
 }
 
 export const MappingList: Component<MappingListProps> = (props) => (
@@ -16,7 +16,7 @@ export const MappingList: Component<MappingListProps> = (props) => (
     <Show
       when={props.mappings.length > 0}
       fallback={
-        <div style={{ padding: "16px" }} class="text-dim">
+        <div style={{ padding: '16px' }} class="text-dim">
           No mappings yet. Create one below.
         </div>
       }
@@ -28,7 +28,7 @@ export const MappingList: Component<MappingListProps> = (props) => (
               <div class="row row--space">
                 <div>
                   <div class="text-green">{m.name}</div>
-                  <div class="text-dim" style={{ "font-size": "0.85em" }}>
+                  <div class="text-dim" style={{ 'font-size': '0.85em' }}>
                     {m.sourcePath} → {m.destPath}
                   </div>
                 </div>
@@ -52,4 +52,4 @@ export const MappingList: Component<MappingListProps> = (props) => (
       </ul>
     </Show>
   </div>
-);
+)

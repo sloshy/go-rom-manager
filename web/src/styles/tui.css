@@ -7,7 +7,7 @@
   min-height: 0;
 }
 .tui-panel::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: -2px;
   pointer-events: none;
@@ -21,7 +21,7 @@
 .tui-titlebar {
   background: var(--border);
   color: var(--fg);
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.6rem;
   text-transform: uppercase;
   padding: 6px 10px;
@@ -32,7 +32,7 @@
 }
 
 .tui-button {
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -42,7 +42,9 @@
   padding: 8px 14px;
   cursor: pointer;
   box-shadow: 4px 4px 0 var(--accent-green-dim);
-  transition: transform 60ms, box-shadow 60ms;
+  transition:
+    transform 60ms,
+    box-shadow 60ms;
 }
 .tui-button:hover {
   background: var(--border);
@@ -91,8 +93,8 @@
   border-color: var(--accent-green);
 }
 .tui-checkbox:checked::after {
-  content: "X";
-  font-family: "Press Start 2P", monospace;
+  content: 'X';
+  font-family: 'Press Start 2P', monospace;
   font-size: 10px;
   color: var(--bg);
   position: absolute;
@@ -138,7 +140,7 @@
   gap: 14px;
 }
 .app-header .brand {
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.9rem;
   color: var(--accent-green);
   text-shadow: 0 0 8px var(--shadow);
@@ -207,30 +209,18 @@
 }
 .game-row.is-selected {
   border-left-color: var(--accent-green);
-  background: linear-gradient(
-    to right,
-    rgba(126, 224, 138, 0.12),
-    transparent 60%
-  );
+  background: linear-gradient(to right, rgba(126, 224, 138, 0.12), transparent 60%);
 }
 .game-row.is-orphan {
   border-left-color: var(--accent-amber);
-  background: linear-gradient(
-    to right,
-    rgba(240, 168, 90, 0.12),
-    transparent 60%
-  );
+  background: linear-gradient(to right, rgba(240, 168, 90, 0.12), transparent 60%);
 }
 .game-row.is-removing {
   border-left-color: var(--danger);
-  background: linear-gradient(
-    to right,
-    rgba(255, 90, 90, 0.14),
-    transparent 60%
-  );
+  background: linear-gradient(to right, rgba(255, 90, 90, 0.14), transparent 60%);
 }
 .game-row .game-prefix {
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.65rem;
   letter-spacing: 0.04em;
   color: var(--fg);
@@ -306,11 +296,11 @@
   background: var(--border);
 }
 .folder-browser .entry.is-dir::before {
-  content: "[+]";
+  content: '[+]';
   color: var(--accent-amber);
 }
 .folder-browser .entry.is-file::before {
-  content: "---";
+  content: '---';
   color: var(--fg-muted);
 }
 .folder-browser .entry.is-selected {
@@ -352,7 +342,7 @@
   cursor: grab;
   color: var(--fg-muted);
   user-select: none;
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.8rem;
   letter-spacing: -0.04em;
   padding: 0 4px;
@@ -361,7 +351,7 @@
   cursor: grabbing;
 }
 .pref-rank {
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.55rem;
   min-width: 1.6rem;
 }
@@ -515,7 +505,7 @@
   color: var(--accent-amber);
 }
 .filter-chip__sign {
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.55rem;
 }
 .filter-chip__text {
@@ -600,7 +590,7 @@
   background: rgba(240, 168, 90, 0.22);
 }
 .tag-filter-chip__sign {
-  font-family: "Press Start 2P", monospace;
+  font-family: 'Press Start 2P', monospace;
   font-size: 0.6rem;
   min-width: 0.7rem;
   text-align: center;

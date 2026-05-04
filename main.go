@@ -28,8 +28,8 @@ var distEmbed embed.FS
 
 type stringSlice []string
 
-func (s *stringSlice) String() string         { return fmt.Sprint(*s) }
-func (s *stringSlice) Set(v string) error     { *s = append(*s, v); return nil }
+func (s *stringSlice) String() string     { return fmt.Sprint(*s) }
+func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
 
 func main() {
 	var sources, dests stringSlice

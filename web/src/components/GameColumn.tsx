@@ -1,9 +1,9 @@
-import { Component, For, Show, createMemo, createSignal } from "solid-js";
-import { FilterChipInput } from "./FilterChipInput";
-import { GameRow } from "./GameRow";
-import { TagFilterMenu } from "./TagFilterMenu";
-import { ExtFilterMenu, type ExtFilter } from "./ExtFilterMenu";
-import { fileExt, type GameGroup } from "../lib/games";
+import { Component, For, Show, createMemo, createSignal } from 'solid-js'
+import { FilterChipInput } from './FilterChipInput'
+import { GameRow } from './GameRow'
+import { TagFilterMenu } from './TagFilterMenu'
+import { ExtFilterMenu, type ExtFilter } from './ExtFilterMenu'
+import { fileExt, type GameGroup } from '../lib/games'
 import {
   collectTagTokens,
   fileMatchesTags,
@@ -12,71 +12,71 @@ import {
   matchesChips,
   type FilterChip,
   type TagFilters,
-} from "../lib/tags";
+} from '../lib/tags'
 
 export interface GameColumnProps {
-  title: string;
-  side: "source" | "destination";
-  groups: GameGroup[];
+  title: string
+  side: 'source' | 'destination'
+  groups: GameGroup[]
   /** Destination files the user has just deselected (was managed, now isn't). */
-  filesToRemove?: string[];
+  filesToRemove?: string[]
   /** Destination files with no source counterpart (locked, must persist). */
-  extraFiles?: string[];
-  isFileSelected: (filename: string) => boolean;
-  onToggleFile?: (filename: string) => void;
+  extraFiles?: string[]
+  isFileSelected: (filename: string) => boolean
+  onToggleFile?: (filename: string) => void
   /** Source-side: toggle prefix selection on/off (auto-pick best variant). */
-  onTogglePrefix?: (files: string[]) => void;
+  onTogglePrefix?: (files: string[]) => void
   /** Destination-side: clear all selected files in the displayed group. */
-  onClearPrefix?: (files: string[]) => void;
-  onContextFile?: (filename: string, evt: MouseEvent) => void;
+  onClearPrefix?: (files: string[]) => void
+  onContextFile?: (filename: string, evt: MouseEvent) => void
   /**
    * Toggle All On: source = auto-select best variant per visible group;
    * destination = restore visible files-to-remove back into selected.
    * Receives the currently visible groups and removals so the handler can act
    * only on what the filter shows.
    */
-  onToggleAllOn?: (groups: GameGroup[], removals: string[]) => void;
+  onToggleAllOn?: (groups: GameGroup[], removals: string[]) => void
   /** Toggle All Off: deselect all files in every visible group. */
-  onToggleAllOff?: (groups: GameGroup[]) => void;
+  onToggleAllOff?: (groups: GameGroup[]) => void
 }
 
 export const GameColumn: Component<GameColumnProps> = (props) => {
-  const [filterChips, setFilterChips] = createSignal<FilterChip[]>([]);
-  const [tagFilters, setTagFilters] = createSignal<TagFilters>({});
-  const [extFilter, setExtFilter] = createSignal<ExtFilter | null>(null);
-  const [filterGroupedItems, setFilterGroupedItems] = createSignal(false);
+  const [filterChips, setFilterChips] = createSignal<FilterChip[]>([])
+  const [tagFilters, setTagFilters] = createSignal<TagFilters>({})
+  const [extFilter, setExtFilter] = createSignal<ExtFilter | null>(null)
+  const [filterGroupedItems, setFilterGroupedItems] = createSignal(false)
 
-  const tagsActive = createMemo(() => hasActiveTagFilters(tagFilters()));
+  const tagsActive = createMemo(() => hasActiveTagFilters(tagFilters()))
 
   const allColumnFiles = createMemo(() => [
     ...props.groups.flatMap((g) => g.files),
     ...(props.filesToRemove ?? []),
     ...(props.extraFiles ?? []),
-  ]);
+  ])
 
-  const tokens = createMemo(() => collectTagTokens(allColumnFiles()));
+  const tokens = createMemo(() => collectTagTokens(allColumnFiles()))
 
   const extensions = createMemo(() => {
-    const exts = new Set<string>();
+    const exts = new Set<string>()
     for (const f of allColumnFiles()) {
-      const ext = fileExt(f);
-      if (ext) exts.add(ext);
+      const ext = fileExt(f)
+      if (ext) exts.add(ext)
     }
-    return [...exts].sort();
-  });
+    return [...exts].sort()
+  })
 
   const fileMatchesExt = (filename: string, ef: ExtFilter | null): boolean => {
-    if (!ef) return true;
-    const ext = fileExt(filename);
-    return ef.state === "positive" ? ext === ef.ext : ext !== ef.ext;
-  };
+    if (!ef) return true
+    const ext = fileExt(filename)
+    return ef.state === 'positive' ? ext === ef.ext : ext !== ef.ext
+  }
 
   const groupMatchesExt = (files: string[], ef: ExtFilter | null): boolean => {
-    if (!ef) return true;
-    return ef.state === "positive"
+    if (!ef) return true
+    return ef.state === 'positive'
       ? files.some((f) => fileExt(f) === ef.ext)
-      : files.every((f) => fileExt(f) !== ef.ext);
-  };
+      : files.every((f) => fileExt(f) !== ef.ext)
+  }
 
   /**
    * Visible groups are filtered first by prefix expression, then by tags.
@@ -88,48 +88,44 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
    * only the surviving variants.
    */
   const visibleGroups = createMemo<GameGroup[]>(() => {
-    const chips = filterChips();
-    const tags = tagFilters();
-    const ef = extFilter();
-    const grouped = filterGroupedItems();
-    const tagsOn = tagsActive();
+    const chips = filterChips()
+    const tags = tagFilters()
+    const ef = extFilter()
+    const grouped = filterGroupedItems()
+    const tagsOn = tagsActive()
 
-    const out: GameGroup[] = [];
+    const out: GameGroup[] = []
     for (const g of props.groups) {
-      if (!matchesChips(g.prefix, chips)) continue;
+      if (!matchesChips(g.prefix, chips)) continue
       if (!tagsOn && !ef) {
-        out.push(g);
-        continue;
+        out.push(g)
+        continue
       }
       if (grouped) {
-        let files = g.files;
-        if (tagsOn) files = files.filter((f) => fileMatchesTags(f, tags));
-        if (ef) files = files.filter((f) => fileMatchesExt(f, ef));
-        if (files.length === 0) continue;
-        out.push({ prefix: g.prefix, files });
+        let files = g.files
+        if (tagsOn) files = files.filter((f) => fileMatchesTags(f, tags))
+        if (ef) files = files.filter((f) => fileMatchesExt(f, ef))
+        if (files.length === 0) continue
+        out.push({ prefix: g.prefix, files })
       } else {
-        if (tagsOn && !groupMatchesTags(g.files, tags)) continue;
-        if (!groupMatchesExt(g.files, ef)) continue;
-        out.push(g);
+        if (tagsOn && !groupMatchesTags(g.files, tags)) continue
+        if (!groupMatchesExt(g.files, ef)) continue
+        out.push(g)
       }
     }
-    return out;
-  });
+    return out
+  })
 
   const flatFileVisible = (f: string): boolean => {
-    if (!matchesChips(f, filterChips())) return false;
-    if (tagsActive() && !fileMatchesTags(f, tagFilters())) return false;
-    if (!fileMatchesExt(f, extFilter())) return false;
-    return true;
-  };
+    if (!matchesChips(f, filterChips())) return false
+    if (tagsActive() && !fileMatchesTags(f, tagFilters())) return false
+    if (!fileMatchesExt(f, extFilter())) return false
+    return true
+  }
 
-  const visibleRemovals = createMemo(() =>
-    (props.filesToRemove ?? []).filter(flatFileVisible),
-  );
+  const visibleRemovals = createMemo(() => (props.filesToRemove ?? []).filter(flatFileVisible))
 
-  const visibleExtras = createMemo(() =>
-    (props.extraFiles ?? []).filter(flatFileVisible),
-  );
+  const visibleExtras = createMemo(() => (props.extraFiles ?? []).filter(flatFileVisible))
 
   return (
     <div class="tui-panel">
@@ -137,7 +133,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
         <span>{props.title}</span>
         <span class="text-dim">{props.groups.length} TITLES</span>
       </div>
-      <div style={{ padding: "10px 10px 0" }}>
+      <div style={{ padding: '10px 10px 0' }}>
         <FilterChipInput chips={filterChips()} onChange={setFilterChips}>
           <ExtFilterMenu
             extensions={extensions()}
@@ -153,7 +149,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
           />
         </FilterChipInput>
         <Show when={props.onToggleAllOn || props.onToggleAllOff}>
-          <div class="row" style={{ "margin-top": "8px", gap: "6px" }}>
+          <div class="row" style={{ 'margin-top': '8px', gap: '6px' }}>
             <Show when={props.onToggleAllOn}>
               <button
                 class="tui-button"
@@ -173,19 +169,17 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
           </div>
         </Show>
       </div>
-      <div style={{ flex: 1, "overflow-y": "auto", "min-height": 0, padding: "8px 10px 10px" }}>
+      <div style={{ flex: 1, 'overflow-y': 'auto', 'min-height': 0, padding: '8px 10px 10px' }}>
         <div role="list" aria-label={`${props.side} games`}>
           <For each={visibleGroups()}>
             {(g) => (
               <GameRow
                 prefix={g.prefix}
                 files={g.files}
-                state={
-                  g.files.some((f) => props.isFileSelected(f)) ? "selected" : "unselected"
-                }
+                state={g.files.some((f) => props.isFileSelected(f)) ? 'selected' : 'unselected'}
                 isFileChecked={(f) => props.isFileSelected(f)}
                 onTogglePrefix={
-                  props.side === "destination"
+                  props.side === 'destination'
                     ? props.onClearPrefix
                       ? () => props.onClearPrefix?.(g.files)
                       : undefined
@@ -198,8 +192,8 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
               />
             )}
           </For>
-          <Show when={props.side === "destination" && visibleRemovals().length > 0}>
-            <div style={{ "margin-top": "10px" }}>
+          <Show when={props.side === 'destination' && visibleRemovals().length > 0}>
+            <div style={{ 'margin-top': '10px' }}>
               <h3 class="text-danger">TO BE REMOVED ON SYNC</h3>
               <For each={visibleRemovals()}>
                 {(f) => (
@@ -214,8 +208,8 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
               </For>
             </div>
           </Show>
-          <Show when={props.side === "destination" && visibleExtras().length > 0}>
-            <div style={{ "margin-top": "10px" }}>
+          <Show when={props.side === 'destination' && visibleExtras().length > 0}>
+            <div style={{ 'margin-top': '10px' }}>
               <h3 class="text-amber">EXTRA FILES (NO SOURCE COUNTERPART)</h3>
               <For each={visibleExtras()}>
                 {(f) => (
@@ -233,5 +227,5 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
         </div>
       </div>
     </div>
-  );
-};
+  )
+}

@@ -36,6 +36,9 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Format check
+        run: ./scripts/format.sh --check
+
       - name: Frontend typecheck
         working-directory: web
         run: npm run typecheck

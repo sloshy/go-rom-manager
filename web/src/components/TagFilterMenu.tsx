@@ -1,20 +1,20 @@
-import { Component, For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { Component, For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import {
   activeTagFilterCount,
   nextTagFilterState,
   type TagFilters,
   type TagFilterState,
-} from "../lib/tags";
+} from '../lib/tags'
 
 export interface TagFilterMenuProps {
   /** Available tag tokens drawn from the column's filenames. */
-  tokens: readonly string[];
+  tokens: readonly string[]
   /** Current per-tag state. Owned by the parent. */
-  filters: TagFilters;
-  onFilterChange: (filters: TagFilters) => void;
+  filters: TagFilters
+  onFilterChange: (filters: TagFilters) => void
   /** When true, tag filters narrow individual files within each group. */
-  filterGroupedItems: boolean;
-  onToggleGroupedItems: (v: boolean) => void;
+  filterGroupedItems: boolean
+  onToggleGroupedItems: (v: boolean) => void
 }
 
 /**
@@ -23,44 +23,43 @@ export interface TagFilterMenuProps {
  * absolutely positioned beneath it. Outside-click closes; Escape too.
  */
 export const TagFilterMenu: Component<TagFilterMenuProps> = (props) => {
-  const [open, setOpen] = createSignal(false);
-  let rootRef!: HTMLDivElement;
+  const [open, setOpen] = createSignal(false)
+  let rootRef!: HTMLDivElement
 
-  const activeCount = createMemo(() => activeTagFilterCount(props.filters));
+  const activeCount = createMemo(() => activeTagFilterCount(props.filters))
 
   const onDocClick = (e: MouseEvent) => {
-    if (!rootRef || e.composedPath().includes(rootRef)) return;
-    setOpen(false);
-  };
+    if (!rootRef || e.composedPath().includes(rootRef)) return
+    setOpen(false)
+  }
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") setOpen(false);
-  };
+    if (e.key === 'Escape') setOpen(false)
+  }
 
   onMount(() => {
-    document.addEventListener("click", onDocClick);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('keydown', onKey)
     onCleanup(() => {
-      document.removeEventListener("click", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    });
-  });
+      document.removeEventListener('click', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    })
+  })
 
   const cycle = (tag: string) => {
-    const cur = props.filters[tag] ?? "off";
-    const next = nextTagFilterState(cur);
-    const out = { ...props.filters };
-    if (next === "off") delete out[tag];
-    else out[tag] = next;
-    props.onFilterChange(out);
-  };
+    const cur = props.filters[tag] ?? 'off'
+    const next = nextTagFilterState(cur)
+    const out = { ...props.filters }
+    if (next === 'off') delete out[tag]
+    else out[tag] = next
+    props.onFilterChange(out)
+  }
 
-  const clearAll = () => props.onFilterChange({});
+  const clearAll = () => props.onFilterChange({})
 
-  const stateOf = (tag: string): TagFilterState => props.filters[tag] ?? "off";
+  const stateOf = (tag: string): TagFilterState => props.filters[tag] ?? 'off'
 
-  const symbolFor = (s: TagFilterState) =>
-    s === "positive" ? "+" : s === "negative" ? "−" : "·";
+  const symbolFor = (s: TagFilterState) => (s === 'positive' ? '+' : s === 'negative' ? '−' : '·')
 
   return (
     <div class="tag-filter-menu" ref={rootRef}>
@@ -72,14 +71,14 @@ export const TagFilterMenu: Component<TagFilterMenuProps> = (props) => {
         onClick={() => setOpen((v) => !v)}
       >
         {(() => {
-          const n = activeCount();
-          return n > 0 ? `TAG FILTERS (${n})` : "TAG FILTERS";
+          const n = activeCount()
+          return n > 0 ? `TAG FILTERS (${n})` : 'TAG FILTERS'
         })()}
       </button>
       <Show when={open()}>
         <div class="tag-filter-menu__panel" role="dialog" aria-label="Tag filters">
           <div class="tag-filter-menu__header">
-            <label class="row" style={{ gap: "6px" }}>
+            <label class="row" style={{ gap: '6px' }}>
               <input
                 type="checkbox"
                 class="tui-checkbox"
@@ -97,7 +96,7 @@ export const TagFilterMenu: Component<TagFilterMenuProps> = (props) => {
           <Show
             when={props.tokens.length > 0}
             fallback={
-              <div class="text-muted" style={{ padding: "8px" }}>
+              <div class="text-muted" style={{ padding: '8px' }}>
                 No tags detected.
               </div>
             }
@@ -109,7 +108,7 @@ export const TagFilterMenu: Component<TagFilterMenuProps> = (props) => {
                     type="button"
                     class={`tag-filter-chip is-${stateOf(tok)}`}
                     aria-label={`Filter ${tok}: ${stateOf(tok)}`}
-                    aria-pressed={stateOf(tok) !== "off"}
+                    aria-pressed={stateOf(tok) !== 'off'}
                     onClick={() => cycle(tok)}
                   >
                     <span class="tag-filter-chip__sign">{symbolFor(stateOf(tok))}</span>
@@ -122,5 +121,5 @@ export const TagFilterMenu: Component<TagFilterMenuProps> = (props) => {
         </div>
       </Show>
     </div>
-  );
-};
+  )
+}

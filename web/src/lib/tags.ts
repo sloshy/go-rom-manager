@@ -17,9 +17,9 @@
 
 export interface FilterChip {
   /** Substring to match (display case preserved; matching lowercases). */
-  text: string;
+  text: string
   /** When true, the chip excludes anything containing `text`. */
-  negative: boolean;
+  negative: boolean
 }
 
 /**
@@ -30,11 +30,11 @@ export interface FilterChip {
  * which subsequent rules drop as garbage.
  */
 function startsWithNegativeMarker(s: string): boolean {
-  return s.length > 1 && s[0] === "-" && !/\s/.test(s[1]) && s[1] !== "-";
+  return s.length > 1 && s[0] === '-' && !/\s/.test(s[1]) && s[1] !== '-'
 }
 
 /** All-dash literals (`-`, `--`, `---`, ...) — never useful as a chip. */
-const ALL_DASHES = /^-+$/;
+const ALL_DASHES = /^-+$/
 
 /**
  * Tokenize raw filter-input text into committed chips and any unfinished
@@ -54,47 +54,47 @@ const ALL_DASHES = /^-+$/;
  * `remainder` verbatim.
  */
 export function tokenizeFilterInput(input: string): {
-  chips: FilterChip[];
-  remainder: string;
+  chips: FilterChip[]
+  remainder: string
 } {
-  const chips: FilterChip[] = [];
-  let i = 0;
-  let boundary = 0;
+  const chips: FilterChip[] = []
+  let i = 0
+  let boundary = 0
 
   while (i < input.length) {
-    while (i < input.length && /\s/.test(input[i])) i++;
-    boundary = i;
-    if (i >= input.length) break;
+    while (i < input.length && /\s/.test(input[i])) i++
+    boundary = i
+    if (i >= input.length) break
 
-    const tokenStart = i;
-    const negative = startsWithNegativeMarker(input.slice(i));
-    if (negative) i++;
+    const tokenStart = i
+    const negative = startsWithNegativeMarker(input.slice(i))
+    if (negative) i++
 
-    let text: string;
+    let text: string
     if (input[i] === '"') {
-      i++;
-      const start = i;
-      while (i < input.length && input[i] !== '"') i++;
+      i++
+      const start = i
+      while (i < input.length && input[i] !== '"') i++
       if (i >= input.length) {
-        return { chips, remainder: input.slice(tokenStart) };
+        return { chips, remainder: input.slice(tokenStart) }
       }
-      text = input.slice(start, i);
-      i++;
+      text = input.slice(start, i)
+      i++
     } else {
-      const start = i;
-      while (i < input.length && !/\s/.test(input[i])) i++;
+      const start = i
+      while (i < input.length && !/\s/.test(input[i])) i++
       if (i >= input.length) {
-        return { chips, remainder: input.slice(tokenStart) };
+        return { chips, remainder: input.slice(tokenStart) }
       }
-      text = input.slice(start, i);
+      text = input.slice(start, i)
     }
 
-    const t = text.trim();
-    if (t && !ALL_DASHES.test(t)) chips.push({ text: t, negative });
-    boundary = i;
+    const t = text.trim()
+    if (t && !ALL_DASHES.test(t)) chips.push({ text: t, negative })
+    boundary = i
   }
 
-  return { chips, remainder: input.slice(boundary) };
+  return { chips, remainder: input.slice(boundary) }
 }
 
 /**
@@ -104,18 +104,18 @@ export function tokenizeFilterInput(input: string): {
  * empty quoted spans).
  */
 export function commitFilterDraft(draft: string): FilterChip | null {
-  let s = draft.trim();
-  if (!s) return null;
-  let negative = false;
+  let s = draft.trim()
+  if (!s) return null
+  let negative = false
   if (startsWithNegativeMarker(s)) {
-    negative = true;
-    s = s.slice(1).trim();
+    negative = true
+    s = s.slice(1).trim()
   }
-  if (s.startsWith('"')) s = s.slice(1);
-  if (s.endsWith('"')) s = s.slice(0, -1);
-  s = s.trim();
-  if (!s || ALL_DASHES.test(s)) return null;
-  return { text: s, negative };
+  if (s.startsWith('"')) s = s.slice(1)
+  if (s.endsWith('"')) s = s.slice(0, -1)
+  s = s.trim()
+  if (!s || ALL_DASHES.test(s)) return null
+  return { text: s, negative }
 }
 
 /**
@@ -124,21 +124,21 @@ export function commitFilterDraft(draft: string): FilterChip | null {
  * doesn't need incremental tokenization.
  */
 export function parseFilterChips(input: string): FilterChip[] {
-  const { chips, remainder } = tokenizeFilterInput(input);
-  const last = commitFilterDraft(remainder);
-  return last ? [...chips, last] : chips;
+  const { chips, remainder } = tokenizeFilterInput(input)
+  const last = commitFilterDraft(remainder)
+  return last ? [...chips, last] : chips
 }
 
 /** True iff `text` satisfies every chip (positive substring + negative exclusions). */
 export function matchesChips(text: string, chips: readonly FilterChip[]): boolean {
-  if (chips.length === 0) return true;
-  const t = text.toLowerCase();
+  if (chips.length === 0) return true
+  const t = text.toLowerCase()
   for (const chip of chips) {
-    const has = t.includes(chip.text.toLowerCase());
-    if (chip.negative && has) return false;
-    if (!chip.negative && !has) return false;
+    const has = t.includes(chip.text.toLowerCase())
+    if (chip.negative && has) return false
+    if (!chip.negative && !has) return false
   }
-  return true;
+  return true
 }
 
 /**
@@ -149,24 +149,24 @@ export function matchesChips(text: string, chips: readonly FilterChip[]): boolea
  * not two. A bare number like `(1)` is still a token when alone.
  */
 export function extractTagTokens(filename: string): string[] {
-  const tokens: string[] = [];
-  const seen = new Set<string>();
+  const tokens: string[] = []
+  const seen = new Set<string>()
   const add = (body: string) => {
     for (const p of body.split(/,/)) {
-      const v = p.trim();
-      if (!v) continue;
-      const lower = v.toLowerCase();
-      if (seen.has(lower)) continue;
-      seen.add(lower);
-      tokens.push(v);
+      const v = p.trim()
+      if (!v) continue
+      const lower = v.toLowerCase()
+      if (seen.has(lower)) continue
+      seen.add(lower)
+      tokens.push(v)
     }
-  };
-  let m: RegExpExecArray | null;
-  const paren = /\(([^()]*)\)/g;
-  while ((m = paren.exec(filename)) !== null) add(m[1]);
-  const bracket = /\[([^\[\]]*)\]/g;
-  while ((m = bracket.exec(filename)) !== null) add(m[1]);
-  return tokens;
+  }
+  let m: RegExpExecArray | null
+  const paren = /\(([^()]*)\)/g
+  while ((m = paren.exec(filename)) !== null) add(m[1])
+  const bracket = /\[([^\[\]]*)\]/g
+  while ((m = bracket.exec(filename)) !== null) add(m[1])
+  return tokens
 }
 
 /**
@@ -175,26 +175,24 @@ export function extractTagTokens(filename: string): string[] {
  * token.
  */
 export function collectTagTokens(filenames: readonly string[]): string[] {
-  const seen = new Map<string, string>();
+  const seen = new Map<string, string>()
   for (const f of filenames) {
     for (const t of extractTagTokens(f)) {
-      const k = t.toLowerCase();
-      if (!seen.has(k)) seen.set(k, t);
+      const k = t.toLowerCase()
+      if (!seen.has(k)) seen.set(k, t)
     }
   }
-  return [...seen.values()].sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: "base" }),
-  );
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
 }
 
-export type TagFilterState = "off" | "positive" | "negative";
-export type TagFilters = Record<string, TagFilterState>;
+export type TagFilterState = 'off' | 'positive' | 'negative'
+export type TagFilters = Record<string, TagFilterState>
 
 /** Click cycle order: off → positive → negative → off. */
 export function nextTagFilterState(s: TagFilterState): TagFilterState {
-  if (s === "off") return "positive";
-  if (s === "positive") return "negative";
-  return "off";
+  if (s === 'off') return 'positive'
+  if (s === 'positive') return 'negative'
+  return 'off'
 }
 
 /**
@@ -204,20 +202,20 @@ export function nextTagFilterState(s: TagFilterState): TagFilterState {
  * keys like `"USA"`.
  */
 function lowerCasedTokenSet(filename: string): Set<string> {
-  return new Set(extractTagTokens(filename).map((t) => t.toLowerCase()));
+  return new Set(extractTagTokens(filename).map((t) => t.toLowerCase()))
 }
 
 /** True iff the filename's tag tokens satisfy every active filter. */
 export function fileMatchesTags(filename: string, filters: TagFilters): boolean {
-  let toks: Set<string> | null = null;
+  let toks: Set<string> | null = null
   for (const [tag, state] of Object.entries(filters)) {
-    if (state === "off") continue;
-    if (toks === null) toks = lowerCasedTokenSet(filename);
-    const has = toks.has(tag.toLowerCase());
-    if (state === "positive" && !has) return false;
-    if (state === "negative" && has) return false;
+    if (state === 'off') continue
+    if (toks === null) toks = lowerCasedTokenSet(filename)
+    const has = toks.has(tag.toLowerCase())
+    if (state === 'positive' && !has) return false
+    if (state === 'negative' && has) return false
   }
-  return true;
+  return true
 }
 
 /**
@@ -227,23 +225,23 @@ export function fileMatchesTags(filename: string, filters: TagFilters): boolean 
  */
 export function groupMatchesTags(files: readonly string[], filters: TagFilters): boolean {
   for (const [tag, state] of Object.entries(filters)) {
-    if (state === "off") continue;
-    const lower = tag.toLowerCase();
-    const anyHas = files.some((f) => lowerCasedTokenSet(f).has(lower));
-    if (state === "positive" && !anyHas) return false;
-    if (state === "negative" && anyHas) return false;
+    if (state === 'off') continue
+    const lower = tag.toLowerCase()
+    const anyHas = files.some((f) => lowerCasedTokenSet(f).has(lower))
+    if (state === 'positive' && !anyHas) return false
+    if (state === 'negative' && anyHas) return false
   }
-  return true;
+  return true
 }
 
 /** Number of filters currently positive or negative (i.e. not off). */
 export function activeTagFilterCount(filters: TagFilters): number {
-  let n = 0;
-  for (const state of Object.values(filters)) if (state !== "off") n++;
-  return n;
+  let n = 0
+  for (const state of Object.values(filters)) if (state !== 'off') n++
+  return n
 }
 
 /** True iff at least one filter is active (positive or negative). */
 export function hasActiveTagFilters(filters: TagFilters): boolean {
-  return activeTagFilterCount(filters) > 0;
+  return activeTagFilterCount(filters) > 0
 }

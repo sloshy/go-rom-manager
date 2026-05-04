@@ -1,51 +1,53 @@
-import { Component, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { A } from "@solidjs/router";
-import { editor } from "../stores/editor";
-import { GameColumn } from "./GameColumn";
-import { SyncToolbar } from "./SyncToolbar";
-import { ManualGroupMenu } from "./ManualGroupMenu";
+import { Component, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { A } from '@solidjs/router'
+import { editor } from '../stores/editor'
+import { GameColumn } from './GameColumn'
+import { SyncToolbar } from './SyncToolbar'
+import { ManualGroupMenu } from './ManualGroupMenu'
 
 export interface MappingEditorProps {
-  id: string;
+  id: string
 }
 
 export const MappingEditor: Component<MappingEditorProps> = (props) => {
-  const [syncing, setSyncing] = createSignal(false);
-  const [contextMenu, setContextMenu] = createSignal<
-    { filename: string; x: number; y: number } | null
-  >(null);
+  const [syncing, setSyncing] = createSignal(false)
+  const [contextMenu, setContextMenu] = createSignal<{
+    filename: string
+    x: number
+    y: number
+  } | null>(null)
 
   onMount(() => {
-    editor.load(props.id);
-    const close = () => setContextMenu(null);
-    window.addEventListener("click", close);
-    onCleanup(() => window.removeEventListener("click", close));
-  });
+    editor.load(props.id)
+    const close = () => setContextMenu(null)
+    window.addEventListener('click', close)
+    onCleanup(() => window.removeEventListener('click', close))
+  })
 
-  const sourceGroups = createMemo(() => editor.state.detail?.sourceGroups ?? []);
-  const knownPrefixes = createMemo(() => sourceGroups().map((g) => g.prefix));
+  const sourceGroups = createMemo(() => editor.state.detail?.sourceGroups ?? [])
+  const knownPrefixes = createMemo(() => sourceGroups().map((g) => g.prefix))
 
   const onSync = async () => {
-    setSyncing(true);
+    setSyncing(true)
     try {
-      await editor.sync();
+      await editor.sync()
     } finally {
-      setSyncing(false);
+      setSyncing(false)
     }
-  };
+  }
 
   const handleContext = (filename: string, e: MouseEvent) => {
-    setContextMenu({ filename, x: e.clientX, y: e.clientY });
-  };
+    setContextMenu({ filename, x: e.clientX, y: e.clientY })
+  }
 
   return (
     <Show
       when={!editor.state.loading && editor.state.detail}
       fallback={<div class="text-dim">Loading mapping...</div>}
     >
-      <div class="row" style={{ "margin-bottom": "8px" }}>
+      <div class="row" style={{ 'margin-bottom': '8px' }}>
         <h2 style={{ margin: 0 }}>{editor.state.detail!.mapping.name}</h2>
-        <span class="text-dim" style={{ "margin-left": "auto" }}>
+        <span class="text-dim" style={{ 'margin-left': 'auto' }}>
           {editor.state.detail!.mapping.sourcePath} → {editor.state.detail!.mapping.destPath}
         </span>
         <A href={`/mapping/${props.id}/settings`} class="crumbs">
@@ -56,7 +58,7 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
         <div class="text-danger">! {editor.state.error}</div>
       </Show>
 
-      <div class="tui-grid-2" style={{ flex: 1, "min-height": 0, overflow: "hidden" }}>
+      <div class="tui-grid-2" style={{ flex: 1, 'min-height': 0, overflow: 'hidden' }}>
         <GameColumn
           title="SOURCE // ROMS"
           side="source"
@@ -107,11 +109,11 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
             prefixes={knownPrefixes()}
             currentGroup={editor.state.manualGroups[cm().filename] ?? null}
             onPick={(target) => editor.setManualGroup(cm().filename, target)}
-            onUnmerge={() => editor.setManualGroup(cm().filename, "")}
+            onUnmerge={() => editor.setManualGroup(cm().filename, '')}
             onClose={() => setContextMenu(null)}
           />
         )}
       </Show>
     </Show>
-  );
-};
+  )
+}

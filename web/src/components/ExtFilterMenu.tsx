@@ -1,58 +1,58 @@
-import { Component, For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { Component, For, Show, createSignal, onCleanup, onMount } from 'solid-js'
 
-export type ExtFilterState = "positive" | "negative";
+export type ExtFilterState = 'positive' | 'negative'
 
 export interface ExtFilter {
-  ext: string;
-  state: ExtFilterState;
+  ext: string
+  state: ExtFilterState
 }
 
 export interface ExtFilterMenuProps {
-  extensions: readonly string[];
-  filter: ExtFilter | null;
-  onFilterChange: (filter: ExtFilter | null) => void;
+  extensions: readonly string[]
+  filter: ExtFilter | null
+  onFilterChange: (filter: ExtFilter | null) => void
 }
 
 export const ExtFilterMenu: Component<ExtFilterMenuProps> = (props) => {
-  const [open, setOpen] = createSignal(false);
-  let rootRef!: HTMLDivElement;
+  const [open, setOpen] = createSignal(false)
+  let rootRef!: HTMLDivElement
 
   const onDocClick = (e: MouseEvent) => {
-    if (!rootRef || e.composedPath().includes(rootRef)) return;
-    setOpen(false);
-  };
+    if (!rootRef || e.composedPath().includes(rootRef)) return
+    setOpen(false)
+  }
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") setOpen(false);
-  };
+    if (e.key === 'Escape') setOpen(false)
+  }
 
   onMount(() => {
-    document.addEventListener("click", onDocClick);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('keydown', onKey)
     onCleanup(() => {
-      document.removeEventListener("click", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    });
-  });
+      document.removeEventListener('click', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    })
+  })
 
   const cycle = (ext: string) => {
-    const cur = props.filter;
+    const cur = props.filter
     if (!cur || cur.ext !== ext) {
-      props.onFilterChange({ ext, state: "positive" });
-    } else if (cur.state === "positive") {
-      props.onFilterChange({ ext, state: "negative" });
+      props.onFilterChange({ ext, state: 'positive' })
+    } else if (cur.state === 'positive') {
+      props.onFilterChange({ ext, state: 'negative' })
     } else {
-      props.onFilterChange(null);
+      props.onFilterChange(null)
     }
-  };
+  }
 
-  const stateOf = (ext: string): ExtFilterState | "off" => {
-    if (!props.filter || props.filter.ext !== ext) return "off";
-    return props.filter.state;
-  };
+  const stateOf = (ext: string): ExtFilterState | 'off' => {
+    if (!props.filter || props.filter.ext !== ext) return 'off'
+    return props.filter.state
+  }
 
-  const symbolFor = (s: ExtFilterState | "off") =>
-    s === "positive" ? "+" : s === "negative" ? "−" : "·";
+  const symbolFor = (s: ExtFilterState | 'off') =>
+    s === 'positive' ? '+' : s === 'negative' ? '−' : '·'
 
   return (
     <div class="tag-filter-menu" ref={rootRef}>
@@ -63,7 +63,7 @@ export const ExtFilterMenu: Component<ExtFilterMenuProps> = (props) => {
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
       >
-        {props.filter ? "EXT FILTER (1)" : "EXT FILTER"}
+        {props.filter ? 'EXT FILTER (1)' : 'EXT FILTER'}
       </button>
       <Show when={open()}>
         <div class="tag-filter-menu__panel" role="dialog" aria-label="Extension filters">
@@ -82,7 +82,7 @@ export const ExtFilterMenu: Component<ExtFilterMenuProps> = (props) => {
           <Show
             when={props.extensions.length > 0}
             fallback={
-              <div class="text-muted" style={{ padding: "8px" }}>
+              <div class="text-muted" style={{ padding: '8px' }}>
                 No extensions detected.
               </div>
             }
@@ -94,7 +94,7 @@ export const ExtFilterMenu: Component<ExtFilterMenuProps> = (props) => {
                     type="button"
                     class={`tag-filter-chip is-${stateOf(ext)}`}
                     aria-label={`Filter extension ${ext}: ${stateOf(ext)}`}
-                    aria-pressed={stateOf(ext) !== "off"}
+                    aria-pressed={stateOf(ext) !== 'off'}
                     onClick={() => cycle(ext)}
                   >
                     <span class="tag-filter-chip__sign">{symbolFor(stateOf(ext))}</span>
@@ -107,5 +107,5 @@ export const ExtFilterMenu: Component<ExtFilterMenuProps> = (props) => {
         </div>
       </Show>
     </div>
-  );
-};
+  )
+}
