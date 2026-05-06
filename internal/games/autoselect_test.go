@@ -118,6 +118,19 @@ func TestAutoSelectWith_SkipsUnmatchedTagsInOrder(t *testing.T) {
 	}
 }
 
+func TestAutoSelect_CompoundRegionTag(t *testing.T) {
+	files := []string{
+		"Example (Europe) (Rev 2).zip",
+		"Example (Japan).zip",
+		"Example (Japan) (Rev 1).zip",
+		"Example (USA, Europe) (Rev 1).zip",
+		"Example (USA, Europe).zip",
+	}
+	if got := AutoSelect(files); got != "Example (USA, Europe) (Rev 1).zip" {
+		t.Errorf("AutoSelect = %q, want USA,Europe Rev 1 (not Europe Rev 2)", got)
+	}
+}
+
 func TestAutoSelectWith_StillExcludesDemoAndProto(t *testing.T) {
 	files := []string{
 		"Example Game 1 (Japan) (Demo).zip",

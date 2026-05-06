@@ -43,11 +43,14 @@ func ParseName(filename string) Parsed {
 }
 
 // HasTag reports whether the parsed name carries the given tag
-// (case-insensitive, exact match against a parenthesised group).
+// (case-insensitive). A parenthesised group like "(USA, Europe)" matches
+// both "USA" and "Europe" — comma-separated parts are each checked.
 func (p Parsed) HasTag(tag string) bool {
 	for _, t := range p.Tags {
-		if strings.EqualFold(t, tag) {
-			return true
+		for _, part := range strings.Split(t, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), tag) {
+				return true
+			}
 		}
 	}
 	return false

@@ -41,3 +41,19 @@ func TestHasTag(t *testing.T) {
 		t.Errorf("did not expect Japan tag")
 	}
 }
+
+func TestHasTag_CompoundRegion(t *testing.T) {
+	p := ParseName("Example Game 1 (USA, Europe) (Rev 1).zip")
+	if !p.HasTag("USA") {
+		t.Errorf("expected USA to match within compound tag")
+	}
+	if !p.HasTag("Europe") {
+		t.Errorf("expected Europe to match within compound tag")
+	}
+	if !p.HasTag("europe") {
+		t.Errorf("expected case-insensitive match within compound tag")
+	}
+	if p.HasTag("Japan") {
+		t.Errorf("did not expect Japan tag")
+	}
+}

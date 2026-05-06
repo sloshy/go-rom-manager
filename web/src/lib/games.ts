@@ -105,7 +105,9 @@ export function parseName(filename: string): Parsed {
 }
 
 export function hasTag(p: Parsed, tag: string): boolean {
-  return p.tags.some((t) => t.toLowerCase() === tag.toLowerCase())
+  return p.tags.some((t) =>
+    t.split(',').some((part) => part.trim().toLowerCase() === tag.toLowerCase()),
+  )
 }
 
 export function groupFiles(
