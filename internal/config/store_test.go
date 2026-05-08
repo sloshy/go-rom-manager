@@ -133,6 +133,31 @@ func TestStore_SetMappingPreferences(t *testing.T) {
 	}
 }
 
+func TestStore_ExtractArchivesPersists(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+	s, _ := NewStore(storePath)
+	added, _ := s.Add(Mapping{Name: "A", SourcePath: "/s", DestPath: "/d"})
+
+	if got, _ := s.Get(added.ID); got.ExtractArchives {
+		t.Errorf("default ExtractArchives should be false, got true")
+	}
+
+	added.ExtractArchives = true
+	if _, err := s.Update(added); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := NewStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s2.Get(added.ID)
+	if !got.ExtractArchives {
+		t.Errorf("ExtractArchives didn't persist across reloads, got %+v", got)
+	}
+}
+
 func TestStore_AtomicWrite(t *testing.T) {
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "mappings.json")

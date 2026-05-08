@@ -10,6 +10,7 @@ const exampleMapping: Mapping = {
   destPath: '/dest/console-a',
   manualGroups: {},
   allowedExtensions: [],
+  extractArchives: false,
 }
 
 describe('MappingList', () => {

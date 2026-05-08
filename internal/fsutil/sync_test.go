@@ -179,6 +179,98 @@ func TestComputeSync_AltExtCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestComputeSync_AltExtVariantKeyMatchesMultiTrackFiles(t *testing.T) {
+	// Source is a single zip; dest has the cue + multiple bin files
+	// extracted from it. Their stems differ ("Game" vs "Game (Track 1)")
+	// but their VariantKey is the same ("Game"), so alt-ext matching
+	// must treat all three as managed by the source zip — no re-copy,
+	// no spurious deletion of the bins.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Game.cue"), "cue")
+	writeFile(t, filepath.Join(dir, "Game (Track 1).bin"), "b1")
+	writeFile(t, filepath.Join(dir, "Game (Track 2).bin"), "b2")
+
+	plan, err := ComputeSync(
+		[]string{"Game.zip"},
+		[]string{"Game.zip"},
+		dir,
+		[]string{".bin", ".cue"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToCopy) != 0 {
+		t.Errorf("ToCopy=%v, want empty (variant-key match should satisfy intent)", plan.ToCopy)
+	}
+	if len(plan.ToDelete) != 0 {
+		t.Errorf("ToDelete=%v, want empty (track files share VariantKey with source zip)", plan.ToDelete)
+	}
+}
+
+func TestComputeSync_AltExtVariantKeyDeleteOnDeselect(t *testing.T) {
+	// Same setup, but the user has deselected the game. Every dest file
+	// shares VariantKey with the source zip, so all three are "managed"
+	// and should be queued for deletion.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Game.cue"), "cue")
+	writeFile(t, filepath.Join(dir, "Game (Track 1).bin"), "b1")
+	writeFile(t, filepath.Join(dir, "Game (Track 2).bin"), "b2")
+
+	plan, err := ComputeSync(
+		nil,
+		[]string{"Game.zip"},
+		dir,
+		[]string{".bin", ".cue"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(plan.ToDelete)
+	want := []string{"Game (Track 1).bin", "Game (Track 2).bin", "Game.cue"}
+	if len(plan.ToDelete) != len(want) {
+		t.Fatalf("ToDelete=%v, want %v", plan.ToDelete, want)
+	}
+	for i, n := range want {
+		if plan.ToDelete[i] != n {
+			t.Errorf("ToDelete[%d]=%q, want %q", i, plan.ToDelete[i], n)
+		}
+	}
+}
+
+func TestComputeSync_DifferentDiscsRemainDistinct(t *testing.T) {
+	// (Disc N) is NOT a variant-part marker — it must keep different
+	// discs as separate variants. Intent is Disc 1 only; Disc 2 files
+	// in dest must be deleted as managed-but-not-intended.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Game (Disc 1).cue"), "1c")
+	writeFile(t, filepath.Join(dir, "Game (Disc 1) (Track 1).bin"), "1b")
+	writeFile(t, filepath.Join(dir, "Game (Disc 2).cue"), "2c")
+	writeFile(t, filepath.Join(dir, "Game (Disc 2) (Track 1).bin"), "2b")
+
+	plan, err := ComputeSync(
+		[]string{"Game (Disc 1).zip"},
+		[]string{"Game (Disc 1).zip", "Game (Disc 2).zip"},
+		dir,
+		[]string{".bin", ".cue"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToCopy) != 0 {
+		t.Errorf("ToCopy=%v, want empty (disc 1 is satisfied by alt-ext)", plan.ToCopy)
+	}
+	sort.Strings(plan.ToDelete)
+	want := []string{"Game (Disc 2) (Track 1).bin", "Game (Disc 2).cue"}
+	if len(plan.ToDelete) != len(want) {
+		t.Fatalf("ToDelete=%v, want %v", plan.ToDelete, want)
+	}
+	for i, n := range want {
+		if plan.ToDelete[i] != n {
+			t.Errorf("ToDelete[%d]=%q, want %q", i, plan.ToDelete[i], n)
+		}
+	}
+}
+
 func TestExecuteSync_CopiesAndDeletes(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
@@ -191,7 +283,7 @@ func TestExecuteSync_CopiesAndDeletes(t *testing.T) {
 		ToCopy:   []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"},
 		ToDelete: []string{"stale.zip"},
 	}
-	if err := ExecuteSync(src, dst, plan); err != nil {
+	if err := ExecuteSync(src, dst, plan, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -224,7 +316,7 @@ func TestExecuteSync_DoesNotMutateSource(t *testing.T) {
 	srcEntriesBefore, _ := ListFiles(src)
 
 	plan := SyncPlan{ToCopy: []string{"Example Game 1 (USA).zip"}}
-	if err := ExecuteSync(src, dst, plan); err != nil {
+	if err := ExecuteSync(src, dst, plan, false); err != nil {
 		t.Fatal(err)
 	}
 

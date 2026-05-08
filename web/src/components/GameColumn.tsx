@@ -3,7 +3,7 @@ import { FilterChipInput } from './FilterChipInput'
 import { GameRow } from './GameRow'
 import { TagFilterMenu } from './TagFilterMenu'
 import { ExtFilterMenu, type ExtFilter } from './ExtFilterMenu'
-import { fileExt, type GameGroup } from '../lib/games'
+import { bundleByVariant, fileExt, type GameGroup } from '../lib/games'
 import {
   collectTagTokens,
   fileMatchesTags,
@@ -24,6 +24,12 @@ export interface GameColumnProps {
   extraFiles?: string[]
   isFileSelected: (filename: string) => boolean
   onToggleFile?: (filename: string) => void
+  /**
+   * Toggle a multi-file bundle as a unit. Fires from per-bundle
+   * checkboxes on either side; receives the bundle's raw files (the
+   * editor handles deduping and source-name resolution).
+   */
+  onToggleBundle?: (files: string[]) => void
   /** Source-side: toggle prefix selection on/off (auto-pick best variant). */
   onTogglePrefix?: (files: string[]) => void
   /** Destination-side: clear all selected files in the displayed group. */
@@ -127,6 +133,19 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
 
   const visibleExtras = createMemo(() => (props.extraFiles ?? []).filter(flatFileVisible))
 
+  /**
+   * Pre-computed bundle views: derive once per (filter or input) change
+   * and read inside `<For>` instead of recomputing `bundleByVariant`
+   * every iteration. Each visible group projects to (group, bundles)
+   * so the row can read `bundles` without paying the bundling cost on
+   * unrelated reactive updates.
+   */
+  const visibleBundledGroups = createMemo(() =>
+    visibleGroups().map((g) => ({ group: g, bundles: bundleByVariant(g.files) })),
+  )
+  const removalBundles = createMemo(() => bundleByVariant(visibleRemovals()))
+  const extraBundles = createMemo(() => bundleByVariant(visibleExtras()))
+
   return (
     <div class="tui-panel">
       <div class="tui-titlebar">
@@ -171,11 +190,12 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
       </div>
       <div style={{ flex: 1, 'overflow-y': 'auto', 'min-height': 0, padding: '8px 10px 10px' }}>
         <div role="list" aria-label={`${props.side} games`}>
-          <For each={visibleGroups()}>
-            {(g) => (
+          <For each={visibleBundledGroups()}>
+            {({ group: g, bundles }) => (
               <GameRow
                 prefix={g.prefix}
                 files={g.files}
+                bundles={bundles}
                 state={g.files.some((f) => props.isFileSelected(f)) ? 'selected' : 'unselected'}
                 isFileChecked={(f) => props.isFileSelected(f)}
                 onTogglePrefix={
@@ -188,6 +208,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
                       : undefined
                 }
                 onToggleFile={props.onToggleFile}
+                onToggleBundle={props.onToggleBundle}
                 onContextFile={props.onContextFile}
               />
             )}
@@ -195,11 +216,12 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
           <Show when={props.side === 'destination' && visibleRemovals().length > 0}>
             <div style={{ 'margin-top': '10px' }}>
               <h3 class="text-danger">TO BE REMOVED ON SYNC</h3>
-              <For each={visibleRemovals()}>
-                {(f) => (
+              <For each={removalBundles()}>
+                {(b) => (
                   <GameRow
-                    prefix={f}
-                    files={[f]}
+                    prefix={b.files.length > 1 ? b.label : b.files[0]}
+                    files={b.files}
+                    bundles={[b]}
                     state="removing"
                     isFileChecked={() => true}
                     disabled={true}
@@ -211,11 +233,12 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
           <Show when={props.side === 'destination' && visibleExtras().length > 0}>
             <div style={{ 'margin-top': '10px' }}>
               <h3 class="text-amber">EXTRA FILES (NO SOURCE COUNTERPART)</h3>
-              <For each={visibleExtras()}>
-                {(f) => (
+              <For each={extraBundles()}>
+                {(b) => (
                   <GameRow
-                    prefix={f}
-                    files={[f]}
+                    prefix={b.files.length > 1 ? b.label : b.files[0]}
+                    files={b.files}
+                    bundles={[b]}
                     state="orphan"
                     isFileChecked={() => true}
                     disabled={true}

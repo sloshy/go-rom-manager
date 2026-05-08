@@ -33,6 +33,13 @@ export interface Mapping {
    * array (possibly empty).
    */
   allowedExtensions: string[]
+  /**
+   * When true, .zip source files are extracted into the destination on
+   * sync (with inner entries renamed to share the zip's stem) instead
+   * of being copied verbatim. Inner extensions still need to appear in
+   * `allowedExtensions` for the resulting files to round-trip.
+   */
+  extractArchives: boolean
 }
 
 export interface MappingDetail {
@@ -57,6 +64,14 @@ export interface SettingsPayload {
 export interface MappingPreferencesPayload {
   mapping: Mapping
   effectivePreferences: string[]
+}
+
+export interface UpdateMappingBody {
+  name: string
+  sourcePath: string
+  destPath: string
+  allowedExtensions: string[]
+  extractArchives: boolean
 }
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -94,10 +109,8 @@ export const api = {
 
   getMapping: (id: string) => jsonFetch<MappingDetail>(`/api/mappings/${id}`),
 
-  updateMapping: (
-    id: string,
-    body: { name: string; sourcePath: string; destPath: string; allowedExtensions: string[] },
-  ) => jsonFetch<Mapping>(`/api/mappings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  updateMapping: (id: string, body: UpdateMappingBody) =>
+    jsonFetch<Mapping>(`/api/mappings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
   deleteMapping: (id: string) => jsonFetch<void>(`/api/mappings/${id}`, { method: 'DELETE' }),
 

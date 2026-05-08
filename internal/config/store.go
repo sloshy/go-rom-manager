@@ -26,6 +26,15 @@ import (
 // copy, no delete). Each entry is normalized to lowercase with a leading
 // dot (e.g. ".rvz"). Always serialized as an array (possibly empty) so
 // API consumers don't need to handle a missing field.
+//
+// ExtractArchives, when true, causes ExecuteSync to extract any .zip
+// file from source into destDir instead of copying the .zip itself.
+// Inner entries are extracted with their original basenames preserved
+// (subdirectory structure is flattened). Alt-ext matching uses
+// games.VariantKey, so a `.cue` and its `(Track N).bin` siblings all
+// trace back to the source zip on the next sync; inner files whose
+// names don't share a variant key with any source file show as orange
+// "no source" extras and must be managed manually.
 type Mapping struct {
 	ID                string            `json:"id"`
 	Name              string            `json:"name"`
@@ -34,6 +43,7 @@ type Mapping struct {
 	ManualGroups      map[string]string `json:"manualGroups"`
 	Preferences       *[]string         `json:"preferences,omitempty"`
 	AllowedExtensions []string          `json:"allowedExtensions"`
+	ExtractArchives   bool              `json:"extractArchives"`
 }
 
 // Store persists the list of mappings and the global preferences list to

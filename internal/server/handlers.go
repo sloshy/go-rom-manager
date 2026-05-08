@@ -259,6 +259,7 @@ type updateMappingReq struct {
 	SourcePath        string   `json:"sourcePath"`
 	DestPath          string   `json:"destPath"`
 	AllowedExtensions []string `json:"allowedExtensions"`
+	ExtractArchives   bool     `json:"extractArchives"`
 }
 
 func (s *Server) handleUpdateMapping(w http.ResponseWriter, r *http.Request) {
@@ -289,6 +290,7 @@ func (s *Server) handleUpdateMapping(w http.ResponseWriter, r *http.Request) {
 	m.SourcePath = req.SourcePath
 	m.DestPath = req.DestPath
 	m.AllowedExtensions = cleanExtensions(req.AllowedExtensions)
+	m.ExtractArchives = req.ExtractArchives
 	ok, err := s.store.Update(m)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -360,7 +362,7 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := fsutil.ExecuteSync(m.SourcePath, m.DestPath, plan); err != nil {
+	if err := fsutil.ExecuteSync(m.SourcePath, m.DestPath, plan, m.ExtractArchives); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

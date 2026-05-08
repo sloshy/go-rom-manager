@@ -42,10 +42,12 @@ export const MappingSettings: Component = () => {
   const [editSourcePath, setEditSourcePath] = createSignal('')
   const [editDestPath, setEditDestPath] = createSignal('')
   const [editAllowedExts, setEditAllowedExts] = createSignal<string[]>([])
+  const [editExtractArchives, setEditExtractArchives] = createSignal(false)
   const [origName, setOrigName] = createSignal('')
   const [origSourcePath, setOrigSourcePath] = createSignal('')
   const [origDestPath, setOrigDestPath] = createSignal('')
   const [origAllowedExts, setOrigAllowedExts] = createSignal<string[]>([])
+  const [origExtractArchives, setOrigExtractArchives] = createSignal(false)
   const [editSaving, setEditSaving] = createSignal(false)
   const [editError, setEditError] = createSignal<string | null>(null)
   const [editSavedAt, setEditSavedAt] = createSignal<number | null>(null)
@@ -55,7 +57,8 @@ export const MappingSettings: Component = () => {
       editName() !== origName() ||
       editSourcePath() !== origSourcePath() ||
       editDestPath() !== origDestPath() ||
-      !setsEqual(editAllowedExts(), origAllowedExts()),
+      !setsEqual(editAllowedExts(), origAllowedExts()) ||
+      editExtractArchives() !== origExtractArchives(),
   )
 
   // Preferences override
@@ -87,10 +90,12 @@ export const MappingSettings: Component = () => {
       setEditDestPath(detail.mapping.destPath)
       const exts = detail.mapping.allowedExtensions
       setEditAllowedExts(exts)
+      setEditExtractArchives(detail.mapping.extractArchives)
       setOrigName(detail.mapping.name)
       setOrigSourcePath(detail.mapping.sourcePath)
       setOrigDestPath(detail.mapping.destPath)
       setOrigAllowedExts(exts)
+      setOrigExtractArchives(detail.mapping.extractArchives)
     } catch (e) {
       setLoadError((e as Error).message)
     } finally {
@@ -112,13 +117,16 @@ export const MappingSettings: Component = () => {
         sourcePath: editSourcePath(),
         destPath: editDestPath(),
         allowedExtensions: editAllowedExts(),
+        extractArchives: editExtractArchives(),
       })
       setMappingName(updated.name)
       setOrigName(updated.name)
       setOrigSourcePath(updated.sourcePath)
       setOrigDestPath(updated.destPath)
       setOrigAllowedExts(updated.allowedExtensions)
+      setOrigExtractArchives(updated.extractArchives)
       setEditAllowedExts(updated.allowedExtensions)
+      setEditExtractArchives(updated.extractArchives)
       setEditName(updated.name)
       setEditSavedAt(Date.now())
     } catch (e) {
@@ -248,6 +256,33 @@ export const MappingSettings: Component = () => {
                 onChange={setEditAllowedExts}
                 normalize={normalizeExtension}
               />
+            </div>
+            <div>
+              <h3>EXTRACT ARCHIVES</h3>
+              <label class="row" style={{ gap: '8px', 'align-items': 'flex-start' }}>
+                <input
+                  type="checkbox"
+                  class="tui-checkbox"
+                  checked={editExtractArchives()}
+                  disabled={editSaving()}
+                  onChange={(e) => setEditExtractArchives(e.currentTarget.checked)}
+                />
+                <span>
+                  <span>
+                    Extract <code>.zip</code> files on sync
+                  </span>
+                  <p class="text-dim" style={{ margin: '4px 0 0' }}>
+                    When enabled, .zip files are extracted into the destination instead of copied
+                    verbatim. Inner filenames are preserved as-is (subdirectory structure is
+                    flattened). Add the inner extensions to the allowed list above so extracted
+                    files round-trip on reload — alt-ext matching uses the variant key (prefix +
+                    non-track tags), so a zip's <code>.cue</code> plus its <code>(Track N).bin</code>{' '}
+                    files all stay linked to the source. Extracted files whose names don't share
+                    that variant key with the zip will appear as locked "no source" extras and need
+                    to be sorted out manually.
+                  </p>
+                </span>
+              </label>
             </div>
             <Show when={editError()}>
               <div class="text-danger">! {editError()}</div>

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { editor } from './editor'
+import type { MappingDetail } from '../api/client'
 
 let lastSyncBody: { intended: string[]; manualGroups: Record<string, string> } | null = null
 
@@ -34,7 +35,10 @@ beforeEach(() => {
       }
       if (u.includes('/api/mappings/')) {
         const sources = nextLoad.sourceFiles ?? DEFAULT_SOURCES
-        const detail = {
+        // Annotated as MappingDetail so the compiler enforces shape
+        // completeness — every required field on the real type must be
+        // present, including any added later.
+        const detail: MappingDetail = {
           mapping: {
             id: 'x',
             name: 'test',
@@ -42,6 +46,7 @@ beforeEach(() => {
             destPath: '/d',
             manualGroups: nextLoad.manualGroups ?? {},
             allowedExtensions: nextLoad.allowedExtensions ?? [],
+            extractArchives: false,
           },
           sourceFiles: sources,
           destFiles: nextLoad.destFiles,
@@ -52,6 +57,7 @@ beforeEach(() => {
             },
             { prefix: 'Example Game 2', files: ['Example Game 2 (USA).zip'] },
           ],
+          effectivePreferences: ['USA', 'World'],
         }
         return new Response(JSON.stringify(detail), {
           status: 200,
@@ -220,6 +226,201 @@ describe('editor', () => {
     // Identity for exact-name matches and unknown names.
     expect(editor.destNameToSource('Game.zip')).toBe('Game.zip')
     expect(editor.destNameToSource('Unrelated.txt')).toBe('Unrelated.txt')
+  })
+
+  it('expands one source to multiple dest files when several share its variant key', async () => {
+    // Mirror the post-extract state for a multi-file zip: one source
+    // (Game.zip) corresponds to two dest files (Game.bin + Game.cue),
+    // both alt-ext matched by stem. The dest projection should show
+    // BOTH files under the same source intent, not just one.
+    nextLoad = {
+      sourceFiles: ['Game.zip'],
+      destFiles: ['Game.bin', 'Game.cue'],
+      allowedExtensions: ['.bin', '.cue'],
+    }
+    await editor.load('x')
+    expect(editor.isFileSelected('Game.zip')).toBe(true)
+    const groups = editor.destProjectionGroups()
+    expect(groups).toHaveLength(1)
+    expect(groups[0].files.slice().sort()).toEqual(['Game.bin', 'Game.cue'])
+    // No pending ops — both files already on disk satisfy the intent.
+    expect(editor.pendingDiff()).toEqual({ toCopy: 0, toDelete: 0 })
+  })
+
+  it('variant-key alt-ext links extracted track files back to the source zip', async () => {
+    // Post-extract state: source Sample Title.zip → dest .cue + N×bin
+    // tracks. The bins have a different *stem* ("Sample Title (Track 1)")
+    // but the same *variant key* ("Sample Title") as the source.
+    // Variant-key matching keeps them all under the same source intent
+    // and out of the orange "no source counterpart" pool.
+    nextLoad = {
+      sourceFiles: ['Sample Title.zip'],
+      destFiles: [
+        'Sample Title.cue',
+        'Sample Title (Track 1).bin',
+        'Sample Title (Track 2).bin',
+      ],
+      allowedExtensions: ['.bin', '.cue'],
+    }
+    await editor.load('x')
+    expect(editor.isFileSelected('Sample Title.zip')).toBe(true)
+    // No orange — every track file traces back to the zip via variant key.
+    expect(editor.extraFiles()).toEqual([])
+    // All three dest files project under the single source intent.
+    const groups = editor.destProjectionGroups()
+    expect(groups).toHaveLength(1)
+    expect(groups[0].files.slice().sort()).toEqual([
+      'Sample Title (Track 1).bin',
+      'Sample Title (Track 2).bin',
+      'Sample Title.cue',
+    ])
+    // No pending ops, and every dest file resolves back to the source.
+    expect(editor.pendingDiff()).toEqual({ toCopy: 0, toDelete: 0 })
+    expect(editor.destNameToSource('Sample Title.cue')).toBe('Sample Title.zip')
+    expect(editor.destNameToSource('Sample Title (Track 1).bin')).toBe('Sample Title.zip')
+    expect(editor.destNameToSource('Sample Title (Track 2).bin')).toBe('Sample Title.zip')
+  })
+
+  it('different discs stay distinct under variant-key matching', async () => {
+    // (Disc N) is intentionally excluded from variant-part stripping —
+    // disc 2 must NOT inherit disc 1's source intent.
+    nextLoad = {
+      sourceFiles: ['Game (Disc 1).zip', 'Game (Disc 2).zip'],
+      destFiles: [
+        'Game (Disc 1).cue',
+        'Game (Disc 1) (Track 1).bin',
+        'Game (Disc 2).cue',
+        'Game (Disc 2) (Track 1).bin',
+      ],
+      allowedExtensions: ['.bin', '.cue'],
+    }
+    await editor.load('x')
+    expect(editor.isFileSelected('Game (Disc 1).zip')).toBe(true)
+    expect(editor.isFileSelected('Game (Disc 2).zip')).toBe(true)
+    expect(editor.destNameToSource('Game (Disc 1) (Track 1).bin')).toBe('Game (Disc 1).zip')
+    expect(editor.destNameToSource('Game (Disc 2) (Track 1).bin')).toBe('Game (Disc 2).zip')
+    expect(editor.extraFiles()).toEqual([])
+  })
+
+  it('queues all alt-ext dest files for deletion when source is deselected', async () => {
+    nextLoad = {
+      sourceFiles: ['Game.zip'],
+      destFiles: ['Game.bin', 'Game.cue'],
+      allowedExtensions: ['.bin', '.cue'],
+    }
+    await editor.load('x')
+    editor.toggleFile('Game.zip')
+    // Deselecting the single source must mark BOTH alt-ext files for
+    // removal — multi-file games delete atomically.
+    expect(editor.filesToRemove().slice().sort()).toEqual(['Game.bin', 'Game.cue'])
+    expect(editor.pendingDiff()).toEqual({ toCopy: 0, toDelete: 2 })
+  })
+
+  it('destNameToSource resolves every dest file in a multi-file bundle to one source', async () => {
+    nextLoad = {
+      sourceFiles: ['Game.zip'],
+      destFiles: ['Game.bin', 'Game.cue'],
+      allowedExtensions: ['.bin', '.cue'],
+    }
+    await editor.load('x')
+    // Both alt-ext files trace back to the single source — clicking either
+    // toggles the same intent in state.selected.
+    expect(editor.destNameToSource('Game.bin')).toBe('Game.zip')
+    expect(editor.destNameToSource('Game.cue')).toBe('Game.zip')
+  })
+
+  it('togglePrefix on a multi-track source group selects every track of the best variant', async () => {
+    nextLoad = {
+      sourceFiles: [
+        'Sample Title (USA).cue',
+        'Sample Title (USA) (Track 1).bin',
+        'Sample Title (USA) (Track 2).bin',
+        'Sample Title (Japan).cue',
+        'Sample Title (Japan) (Track 1).bin',
+      ],
+      destFiles: [],
+    }
+    await editor.load('x')
+
+    editor.togglePrefix([
+      'Sample Title (USA).cue',
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (USA) (Track 2).bin',
+      'Sample Title (Japan).cue',
+      'Sample Title (Japan) (Track 1).bin',
+    ])
+
+    // USA preference wins; ALL three USA files become selected together.
+    expect(editor.isFileSelected('Sample Title (USA).cue')).toBe(true)
+    expect(editor.isFileSelected('Sample Title (USA) (Track 1).bin')).toBe(true)
+    expect(editor.isFileSelected('Sample Title (USA) (Track 2).bin')).toBe(true)
+    expect(editor.isFileSelected('Sample Title (Japan).cue')).toBe(false)
+    expect(editor.isFileSelected('Sample Title (Japan) (Track 1).bin')).toBe(false)
+  })
+
+  it('toggleBundle deselects every file when any is selected, and selects all when none are', async () => {
+    nextLoad = {
+      sourceFiles: ['Game.cue', 'Game (Track 1).bin', 'Game (Track 2).bin'],
+      destFiles: ['Game.cue', 'Game (Track 1).bin', 'Game (Track 2).bin'],
+    }
+    await editor.load('x')
+
+    // All three pre-selected from disk. toggleBundle clears them all.
+    editor.toggleBundle(['Game.cue', 'Game (Track 1).bin', 'Game (Track 2).bin'])
+    expect(editor.isFileSelected('Game.cue')).toBe(false)
+    expect(editor.isFileSelected('Game (Track 1).bin')).toBe(false)
+    expect(editor.isFileSelected('Game (Track 2).bin')).toBe(false)
+
+    // Nothing selected — toggleBundle now selects every file in the bundle.
+    editor.toggleBundle(['Game.cue', 'Game (Track 1).bin', 'Game (Track 2).bin'])
+    expect(editor.isFileSelected('Game.cue')).toBe(true)
+    expect(editor.isFileSelected('Game (Track 1).bin')).toBe(true)
+    expect(editor.isFileSelected('Game (Track 2).bin')).toBe(true)
+  })
+
+  it('toggleBundle dedupes when multiple dest files map to one source intent', async () => {
+    nextLoad = {
+      sourceFiles: ['Game.zip'],
+      destFiles: ['Game.bin', 'Game.cue'],
+      allowedExtensions: ['.bin', '.cue'],
+    }
+    await editor.load('x')
+    expect(editor.isFileSelected('Game.zip')).toBe(true)
+
+    // Both dest files resolve to the same source ('Game.zip'). toggleBundle
+    // should flip that one source intent, not run twice.
+    const resolved = ['Game.bin', 'Game.cue'].map(editor.destNameToSource)
+    editor.toggleBundle(resolved)
+    expect(editor.isFileSelected('Game.zip')).toBe(false)
+  })
+
+  it('selectAllGroups picks the best variant per group atomically', async () => {
+    nextLoad = {
+      sourceFiles: [
+        'Game (USA).cue',
+        'Game (USA) (Track 1).bin',
+        'Game (USA) (Track 2).bin',
+        'Game (Japan).cue',
+        'Game (Japan) (Track 1).bin',
+      ],
+      destFiles: [],
+    }
+    await editor.load('x')
+
+    editor.selectAllGroups([
+      [
+        'Game (USA).cue',
+        'Game (USA) (Track 1).bin',
+        'Game (USA) (Track 2).bin',
+        'Game (Japan).cue',
+        'Game (Japan) (Track 1).bin',
+      ],
+    ])
+    // USA variant wins → all three USA files selected, no Japan files.
+    expect(editor.isFileSelected('Game (USA).cue')).toBe(true)
+    expect(editor.isFileSelected('Game (USA) (Track 1).bin')).toBe(true)
+    expect(editor.isFileSelected('Game (USA) (Track 2).bin')).toBe(true)
+    expect(editor.isFileSelected('Game (Japan).cue')).toBe(false)
   })
 
   it('rehydrates from disk after sync — no persisted selection state', async () => {

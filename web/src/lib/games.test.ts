@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { autoSelect, fileExt, fileStem, groupFiles, isAllowedExt, parseName } from './games'
+import {
+  autoSelect,
+  autoSelectVariant,
+  bundleByVariant,
+  fileExt,
+  fileStem,
+  groupFiles,
+  isAllowedExt,
+  parseName,
+  variantKey,
+} from './games'
 
 describe('parseName', () => {
   it('splits prefix and tags', () => {
@@ -142,6 +152,129 @@ describe('fileStem / fileExt', () => {
   it('compound extension match is case-insensitive', () => {
     expect(fileExt('Example.TAR.GZ')).toBe('.tar.gz')
     expect(fileStem('Example.TAR.GZ')).toBe('Example')
+  })
+})
+
+describe('variantKey', () => {
+  it('keeps non-track tags in the key', () => {
+    expect(variantKey('Game (USA).zip')).toBe('Game (USA)')
+    expect(variantKey('Game (USA) (Rev 2).zip')).toBe('Game (USA) (Rev 2)')
+  })
+
+  it('strips Track and Side tags', () => {
+    expect(variantKey('Game (USA) (Track 1).bin')).toBe('Game (USA)')
+    expect(variantKey('Game (USA) (Track 12).bin')).toBe('Game (USA)')
+    expect(variantKey('Game (Side A).bin')).toBe('Game')
+  })
+
+  it('does not strip multi-word title tags that happen to start with Side or Track', () => {
+    // "Side Quest" / "Track Star" are real game-name fragments — only
+    // bare "(Side <id>)" and "(Track <id>)" markers should be dropped.
+    expect(variantKey('Side Quest (USA).zip')).toBe('Side Quest (USA)')
+    expect(variantKey('Game (Side Quest).zip')).toBe('Game (Side Quest)')
+    expect(variantKey('Game (Track Star Edition).zip')).toBe('Game (Track Star Edition)')
+  })
+
+  it('keeps Disc tags so different discs stay distinct variants', () => {
+    expect(variantKey('Game (USA) (Disc 1).cue')).toBe('Game (USA) (Disc 1)')
+    expect(variantKey('Game (USA) (Disc 1) (Track 1).bin')).toBe('Game (USA) (Disc 1)')
+  })
+
+  it('returns the prefix when no tags remain', () => {
+    expect(variantKey('Game.zip')).toBe('Game')
+    expect(variantKey('Game (Track 1).bin')).toBe('Game')
+  })
+})
+
+describe('bundleByVariant', () => {
+  it('groups a multi-track set under one bundle keyed by variant', () => {
+    const bundles = bundleByVariant([
+      'Sample Title (USA).cue',
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (USA) (Track 2).bin',
+    ])
+    expect(bundles).toHaveLength(1)
+    expect(bundles[0].label).toBe('Sample Title (USA)')
+    expect(bundles[0].files).toEqual([
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (USA) (Track 2).bin',
+      'Sample Title (USA).cue',
+    ])
+    expect(bundles[0].extensions).toEqual(['.bin', '.bin', '.cue'])
+  })
+
+  it('keeps different regional variants in separate bundles', () => {
+    const bundles = bundleByVariant([
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (USA).cue',
+      'Sample Title (Japan) (Track 1).bin',
+      'Sample Title (Japan).cue',
+    ])
+    expect(bundles).toHaveLength(2)
+    expect(bundles.map((b) => b.label)).toEqual(['Sample Title (Japan)', 'Sample Title (USA)'])
+    for (const b of bundles) expect(b.files).toHaveLength(2)
+  })
+
+  it('keeps different discs in separate bundles', () => {
+    const bundles = bundleByVariant([
+      'Game (USA) (Disc 1).cue',
+      'Game (USA) (Disc 1) (Track 1).bin',
+      'Game (USA) (Disc 2).cue',
+      'Game (USA) (Disc 2) (Track 1).bin',
+    ])
+    expect(bundles).toHaveLength(2)
+    expect(bundles.map((b) => b.label)).toEqual(['Game (USA) (Disc 1)', 'Game (USA) (Disc 2)'])
+  })
+
+  it('handles single-file bundles', () => {
+    const bundles = bundleByVariant(['Game (USA).zip'])
+    expect(bundles).toHaveLength(1)
+    expect(bundles[0].files).toEqual(['Game (USA).zip'])
+    expect(bundles[0].extensions).toEqual(['.zip'])
+  })
+
+  it('returns empty for empty input', () => {
+    expect(bundleByVariant([])).toEqual([])
+  })
+})
+
+describe('autoSelectVariant', () => {
+  it('returns every file in the chosen variant', () => {
+    const files = [
+      'Sample Title (USA).cue',
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (USA) (Track 2).bin',
+      'Sample Title (Japan).cue',
+      'Sample Title (Japan) (Track 1).bin',
+    ]
+    const picked = autoSelectVariant(files)
+    expect(picked.slice().sort()).toEqual([
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (USA) (Track 2).bin',
+      'Sample Title (USA).cue',
+    ])
+  })
+
+  it('respects custom preferences', () => {
+    const files = [
+      'Sample Title (USA).cue',
+      'Sample Title (USA) (Track 1).bin',
+      'Sample Title (Japan).cue',
+      'Sample Title (Japan) (Track 1).bin',
+    ]
+    const picked = autoSelectVariant(files, ['Japan'])
+    expect(picked.slice().sort()).toEqual([
+      'Sample Title (Japan) (Track 1).bin',
+      'Sample Title (Japan).cue',
+    ])
+  })
+
+  it('returns the single file when no track tags are present', () => {
+    expect(autoSelectVariant(['Game (USA).zip', 'Game (Japan).zip'])).toEqual(['Game (USA).zip'])
+  })
+
+  it('returns [] for empty input', () => {
+    expect(autoSelectVariant([])).toEqual([])
   })
 })
 

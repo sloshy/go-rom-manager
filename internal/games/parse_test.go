@@ -42,6 +42,33 @@ func TestHasTag(t *testing.T) {
 	}
 }
 
+func TestVariantKey(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"Game.zip", "Game"},
+		{"Game (USA).zip", "Game (USA)"},
+		{"Game (USA) (Rev 2).zip", "Game (USA) (Rev 2)"},
+		{"Game (USA) (Track 1).bin", "Game (USA)"},
+		{"Game (USA) (Track 12).bin", "Game (USA)"},
+		{"Game (Side A).bin", "Game"},
+		{"Game (USA) (Disc 1) (Track 1).bin", "Game (USA) (Disc 1)"},
+		{"Game (USA) (Disc 2).cue", "Game (USA) (Disc 2)"},
+		// Real game-name fragments must survive — only bare "Side <id>" /
+		// "Track <id>" markers strip.
+		{"Side Quest (USA).zip", "Side Quest (USA)"},
+		{"Game (Side Quest).zip", "Game (Side Quest)"},
+		{"Game (Track Star Edition).zip", "Game (Track Star Edition)"},
+		{"Game (Track 1).bin", "Game"},
+	}
+	for _, c := range cases {
+		if got := VariantKey(c.in); got != c.want {
+			t.Errorf("VariantKey(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestHasTag_CompoundRegion(t *testing.T) {
 	p := ParseName("Example Game 1 (USA, Europe) (Rev 1).zip")
 	if !p.HasTag("USA") {

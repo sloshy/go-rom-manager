@@ -66,6 +66,7 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
           isFileSelected={(f) => editor.isFileSelected(f)}
           onTogglePrefix={(files) => editor.togglePrefix(files)}
           onToggleFile={(filename) => editor.toggleFile(filename)}
+          onToggleBundle={(files) => editor.toggleBundle(files)}
           onContextFile={handleContext}
           onToggleAllOn={(groups) => editor.selectAllGroups(groups.map((g) => g.files))}
           onToggleAllOff={(groups) => editor.deselectAllGroups(groups.map((g) => g.files))}
@@ -82,6 +83,7 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
           // and selection checks read/write the right key.
           isFileSelected={(f) => editor.isFileSelected(editor.destNameToSource(f))}
           onToggleFile={(filename) => editor.toggleFile(editor.destNameToSource(filename))}
+          onToggleBundle={(files) => editor.toggleBundle(files.map(editor.destNameToSource))}
           onClearPrefix={(files) => editor.clearFiles(files.map(editor.destNameToSource))}
           onToggleAllOn={(_groups, removals) =>
             editor.restoreFiles(removals.map(editor.destNameToSource))

@@ -15,6 +15,25 @@ export interface GameGroup {
   files: string[]
 }
 
+/**
+ * A set of files that belong to the same logical "game variant" — used
+ * to render multi-file games (cue + multiple bins, or any group sharing
+ * a prefix and non-track tags) as a single toggleable row. The set's
+ * key is the variant key (see `variantKey`), not just the stem.
+ */
+export interface FileBundle {
+  /**
+   * The variant key shared by every file in the bundle. Used as the
+   * row label. e.g. "Sample Title (USA)" for a cue+multi-bin set whose
+   * tracks differ only by `(Track N)` tags.
+   */
+  label: string
+  /** All files in this variant, alphabetically sorted. */
+  files: string[]
+  /** Lowercase extensions in `files`, in `files` order, for badge display. */
+  extensions: string[]
+}
+
 const KNOWN_EXTS = [
   '.zip',
   '.7z',
@@ -163,6 +182,62 @@ export function autoSelect(
   return pickHighestRev(candidates)
 }
 
+/**
+ * Tags that mark a file as one piece of a multi-file game variant
+ * rather than a distinct selectable variant of its own. Stripped from
+ * the variant key so e.g. `Game (USA).cue`, `Game (USA) (Track 1).bin`,
+ * and `Game (USA) (Track 2).bin` all collapse to one variant.
+ *
+ * Conservative on purpose: `(Track N)` requires a number (No-Intro /
+ * redump conventions are always numeric), `(Side X)` requires a single
+ * letter. This keeps real game-title fragments like `(Side Quest)` or
+ * `(Track Star Edition)` from being mistaken for multi-track markers.
+ *
+ * `(Disc N)` is intentionally NOT here — different discs are usually
+ * separately-selectable units, so they remain distinct variants.
+ */
+const VARIANT_PART_TAG = /^(?:Track\s+\d+|Side\s+[A-Z])$/i
+
+/**
+ * The key shared by every file belonging to the same logical "game
+ * variant": the parsed prefix plus the parsed tags with multi-track
+ * markers stripped. For files with no tags this equals the stem.
+ */
+export function variantKey(filename: string): string {
+  const p = parseName(filename)
+  const keep = p.tags.filter((t) => !VARIANT_PART_TAG.test(t))
+  return keep.length === 0 ? p.prefix : `${p.prefix} (${keep.join(') (')})`
+}
+
+/**
+ * Bucket a flat list of filenames into variant bundles. Files sharing
+ * a `variantKey` end up in one bundle — multi-track sets (cue + N
+ * .bin files differing only by `(Track N)`) collapse, while different
+ * regional variants or different discs stay separate. Bundles are
+ * sorted alphabetically by label; files within a bundle are sorted
+ * alphabetically.
+ */
+export function bundleByVariant(files: string[]): FileBundle[] {
+  const buckets = new Map<string, string[]>()
+  for (const f of files) {
+    const key = variantKey(f)
+    const arr = buckets.get(key) ?? []
+    arr.push(f)
+    buckets.set(key, arr)
+  }
+  const out: FileBundle[] = []
+  for (const [label, fs] of buckets) {
+    const sorted = fs.slice().sort((a, b) => a.localeCompare(b))
+    out.push({
+      label,
+      files: sorted,
+      extensions: sorted.map(fileExt),
+    })
+  }
+  out.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+  return out
+}
+
 function pickHighestRev(in_: Parsed[]): string {
   let best = in_[0]
   let bestRev = revOf(best)
@@ -174,4 +249,38 @@ function pickHighestRev(in_: Parsed[]): string {
     }
   }
   return best.filename
+}
+
+/**
+ * Variant-aware auto-select: bundle the input by `variantKey`, pick the
+ * best variant using the same priority rules as `autoSelect` (Demo /
+ * Proto excluded; preferences in order; Rev N tiebreak among the chosen
+ * tag bucket), then return ALL files that belong to that variant.
+ *
+ * Each variant is represented to the priority logic by a single
+ * "representative" file (one of its files); since the bundling key
+ * already drops only multi-track markers, every file in a variant has
+ * the same selection-relevant tags (region, demo/proto, rev), so any
+ * representative gives the same answer. The variant whose representative
+ * wins is the one whose files are returned in full.
+ *
+ * Returns [] when files is empty.
+ */
+export function autoSelectVariant(
+  files: string[],
+  preferences: readonly string[] = DEFAULT_PREFERENCES,
+): string[] {
+  if (files.length === 0) return []
+  const bundles = bundleByVariant(files)
+  const repByLabel = new Map<string, string>()
+  const reps: string[] = []
+  for (const b of bundles) {
+    repByLabel.set(b.label, b.files[0])
+    reps.push(b.files[0])
+  }
+  const chosenRep = autoSelect(reps, preferences)
+  if (!chosenRep) return []
+  const chosenLabel = variantKey(chosenRep)
+  const chosenBundle = bundles.find((b) => b.label === chosenLabel)
+  return chosenBundle ? chosenBundle.files.slice() : []
 }

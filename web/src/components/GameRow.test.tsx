@@ -84,6 +84,77 @@ describe('GameRow', () => {
     expect(fn).toHaveBeenCalled()
   })
 
+  it('renders bundles as one row each, labelled by stem when multi-file', () => {
+    const { getByLabelText, queryByText } = render(() => (
+      <GameRow
+        prefix="Sample Title"
+        files={['Sample Title (USA).bin', 'Sample Title (USA).cue']}
+        bundles={[
+          {
+            label: 'Sample Title (USA)',
+            files: ['Sample Title (USA).bin', 'Sample Title (USA).cue'],
+            extensions: ['.bin', '.cue'],
+          },
+        ]}
+        state="selected"
+        isFileChecked={() => true}
+        onToggleFile={() => {}}
+      />
+    ))
+    // Bundle row labelled by stem (not any individual file).
+    expect(getByLabelText('Sample Title (USA)')).toBeInTheDocument()
+    // Individual files are NOT rendered as separate rows.
+    expect(queryByText('Sample Title (USA).bin')).toBeNull()
+    expect(queryByText('Sample Title (USA).cue')).toBeNull()
+  })
+
+  it('toggling a bundle calls onToggleFile with the bundle head file when no onToggleBundle', () => {
+    const fn = vi.fn()
+    const { getByLabelText } = render(() => (
+      <GameRow
+        prefix="Sample Title"
+        files={['Sample Title (USA).bin', 'Sample Title (USA).cue']}
+        bundles={[
+          {
+            label: 'Sample Title (USA)',
+            files: ['Sample Title (USA).bin', 'Sample Title (USA).cue'],
+            extensions: ['.bin', '.cue'],
+          },
+        ]}
+        state="selected"
+        isFileChecked={() => true}
+        onToggleFile={fn}
+      />
+    ))
+    fireEvent.click(getByLabelText('Sample Title (USA)'))
+    expect(fn).toHaveBeenCalledWith('Sample Title (USA).bin')
+  })
+
+  it('toggling a bundle prefers onToggleBundle and passes every file', () => {
+    const bundleFn = vi.fn()
+    const fileFn = vi.fn()
+    const { getByLabelText } = render(() => (
+      <GameRow
+        prefix="Sample Title"
+        files={['Sample Title (USA).bin', 'Sample Title (USA).cue']}
+        bundles={[
+          {
+            label: 'Sample Title (USA)',
+            files: ['Sample Title (USA).bin', 'Sample Title (USA).cue'],
+            extensions: ['.bin', '.cue'],
+          },
+        ]}
+        state="selected"
+        isFileChecked={() => true}
+        onToggleFile={fileFn}
+        onToggleBundle={bundleFn}
+      />
+    ))
+    fireEvent.click(getByLabelText('Sample Title (USA)'))
+    expect(bundleFn).toHaveBeenCalledWith(['Sample Title (USA).bin', 'Sample Title (USA).cue'])
+    expect(fileFn).not.toHaveBeenCalled()
+  })
+
   it('disables checkboxes when disabled is true', () => {
     const { getByLabelText } = render(() => (
       <GameRow
