@@ -10,6 +10,7 @@ import (
 	"github.com/slosh/go-rom-manager/internal/config"
 	"github.com/slosh/go-rom-manager/internal/fsutil"
 	"github.com/slosh/go-rom-manager/internal/games"
+	"github.com/slosh/go-rom-manager/internal/licenses"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -47,6 +48,19 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		"path":    target,
 		"entries": entries,
 	})
+}
+
+// handleGetLicenses returns the embedded dependency attribution
+// manifest. Load() is called only to surface a parse error if the
+// embedded JSON is somehow malformed; on success we stream the raw
+// bytes to avoid re-encoding ~40KB of license text per request.
+func (s *Server) handleGetLicenses(w http.ResponseWriter, _ *http.Request) {
+	if _, err := licenses.Load(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(licenses.Raw())
 }
 
 func (s *Server) handleListMappings(w http.ResponseWriter, _ *http.Request) {

@@ -255,11 +255,7 @@ describe('editor', () => {
     // and out of the orange "no source counterpart" pool.
     nextLoad = {
       sourceFiles: ['Sample Title.zip'],
-      destFiles: [
-        'Sample Title.cue',
-        'Sample Title (Track 1).bin',
-        'Sample Title (Track 2).bin',
-      ],
+      destFiles: ['Sample Title.cue', 'Sample Title (Track 1).bin', 'Sample Title (Track 2).bin'],
       allowedExtensions: ['.bin', '.cue'],
     }
     await editor.load('x')

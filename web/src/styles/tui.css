@@ -598,3 +598,82 @@
 .tag-filter-chip__label {
   font-size: 0.95rem;
 }
+
+.license-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.license-group__heading {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--accent-green);
+  margin: 8px 0 0 0;
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 4px;
+}
+.license-group__empty {
+  padding: 4px 2px;
+}
+.license-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.license-item {
+  border-top: 1px dashed var(--border);
+}
+.license-item:first-child {
+  border-top: none;
+}
+.license-item__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+.license-item__row:hover {
+  background: var(--bg-panel-alt);
+}
+.license-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.license-item__version {
+  font-size: 0.95rem;
+}
+.license-item__license {
+  color: var(--accent-amber);
+  font-size: 0.95rem;
+}
+.license-item__caret {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  width: 1rem;
+  text-align: center;
+}
+.license-item__text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-panel-alt);
+  border-left: 2px solid var(--accent-green-dim);
+  color: var(--fg-dim);
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 480px;
+  overflow: auto;
+}

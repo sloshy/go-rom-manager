@@ -93,6 +93,41 @@ func TestHandleBrowse(t *testing.T) {
 	}
 }
 
+func TestHandleGetLicenses(t *testing.T) {
+	ts, _, _, _ := setupTestServer(t)
+	resp, err := http.Get(ts.URL + "/api/licenses")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var got struct {
+		Go []struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+			License string `json:"license"`
+			Text    string `json:"text"`
+		} `json:"go"`
+		JS []struct {
+			Name string `json:"name"`
+		} `json:"js"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Go) == 0 {
+		t.Fatalf("expected non-empty go list")
+	}
+	if got.Go[0].Name != "github.com/slosh/go-rom-manager" {
+		t.Errorf("first go entry should be the project; got %q", got.Go[0].Name)
+	}
+	if got.Go[0].Text == "" {
+		t.Errorf("project license text should be populated")
+	}
+}
+
 func TestHandleCreateMapping_Validates(t *testing.T) {
 	ts, srcRoot, dstRoot, _ := setupTestServer(t)
 

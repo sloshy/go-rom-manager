@@ -74,6 +74,20 @@ export interface UpdateMappingBody {
   extractArchives: boolean
 }
 
+/** A single dependency's attribution metadata + license text. */
+export interface LicenseEntry {
+  name: string
+  version: string
+  license: string
+  text: string
+}
+
+/** Two-bucket attribution manifest, keyed by language. */
+export interface LicenseManifest {
+  go: LicenseEntry[]
+  js: LicenseEntry[]
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -137,4 +151,6 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ preferences }),
     }),
+
+  getLicenses: () => jsonFetch<LicenseManifest>('/api/licenses'),
 }

@@ -36,6 +36,9 @@ fi
 step "Frontend: production build"
 (cd web && npm run build)
 
+step "Generate dependency license manifest"
+go run ./cmd/gen-licenses
+
 if [[ $SKIP_TESTS -eq 0 ]]; then
   step "Backend: tests"
   go test ./...

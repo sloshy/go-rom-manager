@@ -276,10 +276,10 @@ export const MappingSettings: Component = () => {
                     verbatim. Inner filenames are preserved as-is (subdirectory structure is
                     flattened). Add the inner extensions to the allowed list above so extracted
                     files round-trip on reload — alt-ext matching uses the variant key (prefix +
-                    non-track tags), so a zip's <code>.cue</code> plus its <code>(Track N).bin</code>{' '}
-                    files all stay linked to the source. Extracted files whose names don't share
-                    that variant key with the zip will appear as locked "no source" extras and need
-                    to be sorted out manually.
+                    non-track tags), so a zip's <code>.cue</code> plus its{' '}
+                    <code>(Track N).bin</code> files all stay linked to the source. Extracted files
+                    whose names don't share that variant key with the zip will appear as locked "no
+                    source" extras and need to be sorted out manually.
                   </p>
                 </span>
               </label>

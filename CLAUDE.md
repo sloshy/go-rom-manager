@@ -30,6 +30,12 @@ CI matrix is Go 1.26 / Node 24 (see `.github/workflows/test.yml`); `go.mod` decl
 
 Both `--source` and `--dest` are repeatable and must be existing directories — `config.AppConfig.Validate` absolutizes them and rejects anything that isn't a directory at startup. Default config path is `$XDG_CONFIG_HOME/go-rom-manager/mappings.json`. Docker image runs as `nonroot`, persists to `/data/mappings.json`.
 
+`--licenses` prints all bundled dependencies grouped by Go vs JavaScript and exits; `--license <name>` prints the full license text for one dep (case-insensitive exact match, error on no match). Both flags read from the embedded manifest at `internal/licenses/manifest.json` so they work offline.
+
+## Dependency licenses
+
+`cmd/gen-licenses/main.go` walks Go modules (`go list -m -json all`) and the production npm tree (`npm ls --omit=dev --all --json` from `web/`), reads each module's LICENSE file (plus the project's own LICENSE and the Go runtime LICENSE from `$GOROOT`), and writes `internal/licenses/manifest.json`. The manifest is `//go:embed`-ed by `internal/licenses/licenses.go` and surfaced via three channels: the `--licenses`/`--license` CLI flags, `GET /api/licenses`, and the `/licenses` SPA route (`web/src/pages/Licenses.tsx`). `bundle.sh` regenerates the manifest after `vite build` and before `go test`/`go build`, so it stays in sync with whatever `npm ci` resolved. The committed manifest is just a fallback for fresh checkouts that haven't run the pipeline yet.
+
 ## Architecture
 
 ### The mental model the code is built around
