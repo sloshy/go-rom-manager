@@ -29,7 +29,10 @@ export const MappingList: Component<MappingListProps> = (props) => (
                 <div>
                   <div class="text-green">{m.name}</div>
                   <div class="text-dim" style={{ 'font-size': '0.85em' }}>
-                    {m.sourcePath} → {m.destPath}
+                    {m.sourcePaths.length === 1
+                      ? m.sourcePaths[0]
+                      : `${m.sourcePaths.length} sources`}{' '}
+                    → {m.destPath}
                   </div>
                 </div>
                 <div class="row">

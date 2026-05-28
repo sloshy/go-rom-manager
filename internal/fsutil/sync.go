@@ -10,21 +10,38 @@ import (
 	"github.com/slosh/go-rom-manager/internal/games"
 )
 
+// SourceFile pairs a filename (basename) with the absolute source
+// directory it lives in. It carries per-file origin through sync so a
+// destination fed by multiple source directories knows which directory
+// to copy each file from.
+type SourceFile struct {
+	Name string `json:"name"`
+	Dir  string `json:"dir"`
+}
+
 // SyncPlan captures the file-level diff between an intended destination
 // state (the set of filenames that should exist in destDir) and what is
 // currently on disk in destDir.
 type SyncPlan struct {
-	ToCopy   []string // files present in intended but missing from dest
-	ToDelete []string // files present in dest but not in intended
+	ToCopy   []SourceFile // files present in intended but missing from dest, tagged with their source dir
+	ToDelete []string     // files present in dest but not in intended
 }
 
 // ComputeSync diffs an intended file set against the live destination
 // directory and returns the operations needed to make them match.
 //
-// A dest file is eligible for deletion only if it has a counterpart in
-// sourceFiles — i.e. it is something this mapping could have produced.
-// Files in dest with no source counterpart ("orange extras") are left
-// in place; they are the only files the sync is forbidden from touching.
+// intended carries each wanted file's source directory so multi-source
+// mappings copy from the right place; ToCopy entries inherit that dir.
+// Filenames are expected to be unique across intended (the editor keeps
+// the selection keyed by filename, so a name maps to exactly one dir);
+// if a name appears more than once the first occurrence wins.
+//
+// sourceFiles is the union of every source directory's basenames — it is
+// the "could this mapping have produced it?" oracle for deletion. A dest
+// file is eligible for deletion only if it has a counterpart in
+// sourceFiles. Files in dest with no source counterpart ("orange
+// extras") are left in place; they are the only files the sync is
+// forbidden from touching.
 //
 // allowedExts is an optional list of dest-side alt-format extensions
 // (e.g. ".rvz", ".cso") — if a dest file's extension is in the list
@@ -36,9 +53,9 @@ type SyncPlan struct {
 // (the prefix + non-track tags), so the .bin files trace back to the
 // .zip on the next sync. Pass nil for the original strict-name behavior.
 //
-// All file slices contain only basenames (no path separators); destDir
-// is read via ListFiles.
-func ComputeSync(intended, sourceFiles []string, destDir string, allowedExts []string) (SyncPlan, error) {
+// All file names are basenames (no path separators); destDir is read via
+// ListFiles.
+func ComputeSync(intended []SourceFile, sourceFiles []string, destDir string, allowedExts []string) (SyncPlan, error) {
 	dest, err := ListFiles(destDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -49,11 +66,11 @@ func ComputeSync(intended, sourceFiles []string, destDir string, allowedExts []s
 
 	wantSet := make(map[string]struct{}, len(intended))
 	for _, f := range intended {
-		wantSet[f] = struct{}{}
+		wantSet[f.Name] = struct{}{}
 	}
 	wantVariants := make(map[string]struct{}, len(intended))
 	for _, f := range intended {
-		wantVariants[games.VariantKey(f)] = struct{}{}
+		wantVariants[games.VariantKey(f.Name)] = struct{}{}
 	}
 	haveSet := make(map[string]struct{}, len(dest))
 	for _, f := range dest {
@@ -75,11 +92,16 @@ func ComputeSync(intended, sourceFiles []string, destDir string, allowedExts []s
 	}
 
 	plan := SyncPlan{}
-	for f := range wantSet {
-		if _, ok := haveSet[f]; ok {
+	copied := make(map[string]struct{}, len(intended))
+	for _, f := range intended {
+		if _, dup := copied[f.Name]; dup {
 			continue
 		}
-		if _, ok := haveAltVariants[games.VariantKey(f)]; ok {
+		copied[f.Name] = struct{}{}
+		if _, ok := haveSet[f.Name]; ok {
+			continue
+		}
+		if _, ok := haveAltVariants[games.VariantKey(f.Name)]; ok {
 			continue
 		}
 		plan.ToCopy = append(plan.ToCopy, f)
@@ -126,9 +148,10 @@ func extAllowed(name string, allowed []string) bool {
 	return false
 }
 
-// ExecuteSync applies a SyncPlan: it copies each ToCopy file from srcDir
-// into destDir (atomically, via a temp file + rename) and removes each
-// ToDelete file from destDir. The source directory is never modified.
+// ExecuteSync applies a SyncPlan: it copies each ToCopy file from its own
+// source directory into destDir (atomically, via a temp file + rename)
+// and removes each ToDelete file from destDir. Source directories are
+// never modified.
 //
 // When extractArchives is true, ToCopy entries with a .zip extension
 // are extracted into destDir (preserving each entry's basename, with
@@ -136,21 +159,21 @@ func extAllowed(name string, allowed []string) bool {
 // see ExtractZip. Non-zip entries are always copied as-is.
 //
 // destDir is created if it does not exist.
-func ExecuteSync(srcDir, destDir string, plan SyncPlan, extractArchives bool) error {
+func ExecuteSync(destDir string, plan SyncPlan, extractArchives bool) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
-	for _, name := range plan.ToCopy {
-		src := filepath.Join(srcDir, name)
-		if extractArchives && strings.EqualFold(filepath.Ext(name), ".zip") {
+	for _, f := range plan.ToCopy {
+		src := filepath.Join(f.Dir, f.Name)
+		if extractArchives && strings.EqualFold(filepath.Ext(f.Name), ".zip") {
 			if _, err := ExtractZip(src, destDir); err != nil {
-				return fmt.Errorf("extract %s: %w", name, err)
+				return fmt.Errorf("extract %s: %w", f.Name, err)
 			}
 			continue
 		}
-		dst := filepath.Join(destDir, name)
+		dst := filepath.Join(destDir, f.Name)
 		if err := copyAtomic(src, dst); err != nil {
-			return fmt.Errorf("copy %s: %w", name, err)
+			return fmt.Errorf("copy %s: %w", f.Name, err)
 		}
 	}
 	for _, name := range plan.ToDelete {

@@ -10,10 +10,24 @@ import (
 	"sync"
 )
 
-// Mapping is one source-folder ↔ destination-folder pairing along with
-// any manual prefix overrides. The set of "selected" files is derived at
-// runtime from the destination directory's contents (intersected with
-// the source) — it is intentionally not persisted here.
+// Mapping pairs one or more source folders with a single destination
+// folder, along with any manual prefix overrides. The set of "selected"
+// files is derived at runtime from the destination directory's contents
+// (intersected with the union of all sources) — it is intentionally not
+// persisted here.
+//
+// SourcePaths is the ordered list of read-only source directories that
+// feed the destination. The destination is reconciled against the union
+// of all of them on sync; filenames are expected to be unique across the
+// union (the editor enforces this). Always serialized as an array.
+//
+// PrimarySource is the source folder that the editor loads first. When
+// empty, the first entry of SourcePaths is used. It is omitted from JSON
+// when unset.
+//
+// SourcePath is the legacy single-source field. It is migrated into
+// SourcePaths on load and cleared, so it never round-trips back to disk;
+// older mappings.json files upgrade transparently on the next save.
 //
 // Preferences is an optional per-mapping override of the auto-select
 // priority order. A nil pointer means "inherit the global preferences";
@@ -38,7 +52,9 @@ import (
 type Mapping struct {
 	ID                string            `json:"id"`
 	Name              string            `json:"name"`
-	SourcePath        string            `json:"sourcePath"`
+	SourcePaths       []string          `json:"sourcePaths"`
+	PrimarySource     string            `json:"primarySource,omitempty"`
+	SourcePath        string            `json:"sourcePath,omitempty"` // legacy; migrated into SourcePaths on load
 	DestPath          string            `json:"destPath"`
 	ManualGroups      map[string]string `json:"manualGroups"`
 	Preferences       *[]string         `json:"preferences,omitempty"`
@@ -87,11 +103,21 @@ func (s *Store) load() error {
 	}
 	s.mappings = wrapper.Mappings
 	for i := range s.mappings {
-		if s.mappings[i].AllowedExtensions == nil {
-			s.mappings[i].AllowedExtensions = []string{}
+		m := &s.mappings[i]
+		// Migrate the legacy single SourcePath into SourcePaths and clear
+		// it so it never round-trips back to disk.
+		if len(m.SourcePaths) == 0 && m.SourcePath != "" {
+			m.SourcePaths = []string{m.SourcePath}
 		}
-		if s.mappings[i].ManualGroups == nil {
-			s.mappings[i].ManualGroups = map[string]string{}
+		m.SourcePath = ""
+		if m.SourcePaths == nil {
+			m.SourcePaths = []string{}
+		}
+		if m.AllowedExtensions == nil {
+			m.AllowedExtensions = []string{}
+		}
+		if m.ManualGroups == nil {
+			m.ManualGroups = map[string]string{}
 		}
 	}
 	s.globalPreferences = wrapper.GlobalPreferences
@@ -161,6 +187,9 @@ func (s *Store) Add(m Mapping) (Mapping, error) {
 	}
 	if m.AllowedExtensions == nil {
 		m.AllowedExtensions = []string{}
+	}
+	if m.SourcePaths == nil {
+		m.SourcePaths = []string{}
 	}
 	s.mappings = append(s.mappings, m)
 	if err := s.saveLocked(); err != nil {

@@ -6,7 +6,8 @@ import type { Mapping } from '../api/client'
 const exampleMapping: Mapping = {
   id: 'abc',
   name: 'Console A',
-  sourcePath: '/roms/console-a',
+  sourcePaths: ['/roms/console-a'],
+  primarySource: '',
   destPath: '/dest/console-a',
   manualGroups: {},
   allowedExtensions: [],

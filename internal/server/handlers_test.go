@@ -15,6 +15,16 @@ import (
 	"github.com/slosh/go-rom-manager/internal/config"
 )
 
+// intendedFiles builds the sync-request "intended" payload: each file
+// name tagged with the source directory it should be copied from.
+func intendedFiles(dir string, names ...string) []map[string]string {
+	out := make([]map[string]string, len(names))
+	for i, n := range names {
+		out[i] = map[string]string{"name": n, "dir": dir}
+	}
+	return out
+}
+
 func setupTestServer(t *testing.T) (*httptest.Server, string, string, *config.Store) {
 	t.Helper()
 	srcRoot := t.TempDir()
@@ -179,10 +189,10 @@ func TestEndToEnd_CreateSelectSync(t *testing.T) {
 	}
 
 	syncBody, _ := json.Marshal(map[string]any{
-		"intended": []string{
+		"intended": intendedFiles(filepath.Join(srcRoot, "console-a"),
 			"Example Game 1 (USA).zip",
 			"Example Game 2 (World) (Rev 2).zip",
-		},
+		),
 	})
 	syncResp, err := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
 		"application/json", bytes.NewReader(syncBody))
@@ -233,10 +243,10 @@ func TestEndToEnd_RedDeletes_OrangeStays(t *testing.T) {
 
 	// First sync: select two files. Both should be copied; orphan untouched.
 	firstSync, _ := json.Marshal(map[string]any{
-		"intended": []string{
+		"intended": intendedFiles(filepath.Join(srcRoot, "console-a"),
 			"Example Game 1 (USA).zip",
 			"Example Game 2 (World) (Rev 2).zip",
-		},
+		),
 	})
 	if r, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
 		"application/json", bytes.NewReader(firstSync)); r.StatusCode != http.StatusOK {
@@ -250,7 +260,7 @@ func TestEndToEnd_RedDeletes_OrangeStays(t *testing.T) {
 	// no longer intended → must be deleted (red). The orphan has no source
 	// counterpart so it must still survive.
 	secondSync, _ := json.Marshal(map[string]any{
-		"intended": []string{"Example Game 1 (USA).zip"},
+		"intended": intendedFiles(filepath.Join(srcRoot, "console-a"), "Example Game 1 (USA).zip"),
 	})
 	r2, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
 		"application/json", bytes.NewReader(secondSync))
@@ -338,9 +348,9 @@ func TestMappingPreferences_OverrideAndInherit(t *testing.T) {
 	ts, srcRoot, dstRoot, store := setupTestServer(t)
 
 	created, err := store.Add(config.Mapping{
-		Name:       "Test Mapping",
-		SourcePath: filepath.Join(srcRoot, "console-a"),
-		DestPath:   dstRoot,
+		Name:        "Test Mapping",
+		SourcePaths: []string{filepath.Join(srcRoot, "console-a")},
+		DestPath:    dstRoot,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -431,7 +441,7 @@ func TestUpdateMapping_AllowedExtensionsRoundTrip(t *testing.T) {
 	// to canonical lowercase ".ext" entries with no duplicates.
 	updateBody, _ := json.Marshal(map[string]any{
 		"name":              "Test Mapping",
-		"sourcePath":        filepath.Join(srcRoot, "console-a"),
+		"sourcePaths":       []string{filepath.Join(srcRoot, "console-a")},
 		"destPath":          dstRoot,
 		"allowedExtensions": []string{"RVZ", ".cso", "cso", " chd "},
 	})
@@ -487,7 +497,7 @@ func TestEndToEnd_AltExtSyncSkipsAndDeletes(t *testing.T) {
 	// Configure allowed extensions on the mapping.
 	updateBody, _ := json.Marshal(map[string]any{
 		"name":              "Test Mapping",
-		"sourcePath":        filepath.Join(srcRoot, "console-a"),
+		"sourcePaths":       []string{filepath.Join(srcRoot, "console-a")},
 		"destPath":          dstRoot,
 		"allowedExtensions": []string{".rvz"},
 	})
@@ -501,7 +511,7 @@ func TestEndToEnd_AltExtSyncSkipsAndDeletes(t *testing.T) {
 	// Sync with intended including the .zip whose .rvz alt-ext already
 	// exists. No copy, no delete.
 	syncBody, _ := json.Marshal(map[string]any{
-		"intended": []string{"Example Game 1 (USA).zip"},
+		"intended": intendedFiles(filepath.Join(srcRoot, "console-a"), "Example Game 1 (USA).zip"),
 	})
 	r, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
 		"application/json", bytes.NewReader(syncBody))
@@ -526,7 +536,7 @@ func TestEndToEnd_AltExtSyncSkipsAndDeletes(t *testing.T) {
 
 	// Now deselect the game entirely. Sync should delete the alt-ext
 	// file (it is "managed" via alt-ext to a known source file).
-	emptySync, _ := json.Marshal(map[string]any{"intended": []string{}})
+	emptySync, _ := json.Marshal(map[string]any{"intended": []map[string]string{}})
 	r2, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync",
 		"application/json", bytes.NewReader(emptySync))
 	defer r2.Body.Close()
@@ -535,6 +545,178 @@ func TestEndToEnd_AltExtSyncSkipsAndDeletes(t *testing.T) {
 	}
 	if _, err := os.Stat(convertedPath); !os.IsNotExist(err) {
 		t.Errorf("expected alt-ext file removed, got err=%v", err)
+	}
+}
+
+func TestUpdateMapping_MultiSourceAndPrimary(t *testing.T) {
+	ts, srcRoot, dstRoot, _ := setupTestServer(t)
+
+	// A second source directory under the same root.
+	consoleB := filepath.Join(srcRoot, "console-b")
+	if err := os.MkdirAll(consoleB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(consoleB, "Other Game (USA).zip"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"name":       "Test Mapping",
+		"sourcePath": filepath.Join(srcRoot, "console-a"),
+		"destPath":   dstRoot,
+	})
+	resp, _ := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&created)
+	resp.Body.Close()
+
+	consoleA := filepath.Join(srcRoot, "console-a")
+	updateBody, _ := json.Marshal(map[string]any{
+		"name":          "Test Mapping",
+		"sourcePaths":   []string{consoleA, consoleB},
+		"primarySource": consoleB,
+		"destPath":      dstRoot,
+	})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID, bytes.NewReader(updateBody))
+	req.Header.Set("Content-Type", "application/json")
+	put, _ := http.DefaultClient.Do(req)
+	put.Body.Close()
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("PUT status=%d", put.StatusCode)
+	}
+
+	getResp, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer getResp.Body.Close()
+	var detail struct {
+		Mapping config.Mapping `json:"mapping"`
+		Sources []struct {
+			Path  string   `json:"path"`
+			Files []string `json:"files"`
+		} `json:"sources"`
+	}
+	json.NewDecoder(getResp.Body).Decode(&detail)
+	if len(detail.Mapping.SourcePaths) != 2 {
+		t.Fatalf("SourcePaths=%v, want 2 entries", detail.Mapping.SourcePaths)
+	}
+	if detail.Mapping.PrimarySource != consoleB {
+		t.Errorf("PrimarySource=%q, want %q", detail.Mapping.PrimarySource, consoleB)
+	}
+	if len(detail.Sources) != 2 || detail.Sources[0].Path != consoleA || detail.Sources[1].Path != consoleB {
+		t.Errorf("sources views=%+v, want [console-a, console-b] in order", detail.Sources)
+	}
+
+	// Primary that isn't one of the sources must be rejected.
+	badBody, _ := json.Marshal(map[string]any{
+		"name":          "Test Mapping",
+		"sourcePaths":   []string{consoleA},
+		"primarySource": consoleB,
+		"destPath":      dstRoot,
+	})
+	badReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID, bytes.NewReader(badBody))
+	badReq.Header.Set("Content-Type", "application/json")
+	bad, _ := http.DefaultClient.Do(badReq)
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 when primarySource is not a source folder, got %d", bad.StatusCode)
+	}
+}
+
+func TestEndToEnd_SyncFromMultipleSources(t *testing.T) {
+	ts, srcRoot, dstRoot, _ := setupTestServer(t)
+
+	consoleA := filepath.Join(srcRoot, "console-a")
+	consoleB := filepath.Join(srcRoot, "console-b")
+	if err := os.MkdirAll(consoleB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(consoleB, "Other Game (USA).zip"), []byte("from-b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"name":       "Test Mapping",
+		"sourcePath": consoleA,
+		"destPath":   dstRoot,
+	})
+	resp, _ := http.Post(ts.URL+"/api/mappings", "application/json", bytes.NewReader(body))
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&created)
+	resp.Body.Close()
+
+	updateBody, _ := json.Marshal(map[string]any{
+		"name":        "Test Mapping",
+		"sourcePaths": []string{consoleA, consoleB},
+		"destPath":    dstRoot,
+	})
+	uReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID, bytes.NewReader(updateBody))
+	uReq.Header.Set("Content-Type", "application/json")
+	if r, _ := http.DefaultClient.Do(uReq); r.StatusCode != http.StatusOK {
+		t.Fatalf("PUT status=%d", r.StatusCode)
+	}
+
+	// Select one file from each source — both must be copied from their
+	// respective directories.
+	intended := append(
+		intendedFiles(consoleA, "Example Game 1 (USA).zip"),
+		intendedFiles(consoleB, "Other Game (USA).zip")...,
+	)
+	syncBody, _ := json.Marshal(map[string]any{"intended": intended})
+	r, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync", "application/json", bytes.NewReader(syncBody))
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("sync status=%d", r.StatusCode)
+	}
+
+	if got, _ := os.ReadFile(filepath.Join(dstRoot, "Other Game (USA).zip")); string(got) != "from-b" {
+		t.Errorf("Other Game content=%q, want %q (copied from console-b)", got, "from-b")
+	}
+	if _, err := os.Stat(filepath.Join(dstRoot, "Example Game 1 (USA).zip")); err != nil {
+		t.Errorf("file from console-a not copied: %v", err)
+	}
+
+	// A sync that names a source dir not on the mapping must be rejected.
+	outside := t.TempDir() // not under the configured --source root either
+	badSync, _ := json.Marshal(map[string]any{
+		"intended": intendedFiles(outside, "Whatever.zip"),
+	})
+	bad, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync", "application/json", bytes.NewReader(badSync))
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for intended file from an unconfigured source, got %d", bad.StatusCode)
+	}
+}
+
+func TestSync_ToleratesNonCanonicalStoredSourcePath(t *testing.T) {
+	// A mapping whose stored source path is non-canonical (trailing slash /
+	// embedded "/./") — as could arise from a migrated legacy entry — must
+	// still match the canonical dir the editor sends on sync.
+	ts, srcRoot, dstRoot, store := setupTestServer(t)
+
+	consoleA := filepath.Join(srcRoot, "console-a")
+	noisy := consoleA + "/./" // same dir, non-canonical spelling
+	created, err := store.Add(config.Mapping{
+		Name:        "Test Mapping",
+		SourcePaths: []string{noisy},
+		DestPath:    dstRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	syncBody, _ := json.Marshal(map[string]any{
+		"intended": intendedFiles(consoleA, "Example Game 1 (USA).zip"),
+	})
+	r, _ := http.Post(ts.URL+"/api/mappings/"+created.ID+"/sync", "application/json", bytes.NewReader(syncBody))
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("sync status=%d, want 200 (canonical dir should match non-canonical stored path)", r.StatusCode)
+	}
+	if _, err := os.Stat(filepath.Join(dstRoot, "Example Game 1 (USA).zip")); err != nil {
+		t.Errorf("file was not copied: %v", err)
 	}
 }
 

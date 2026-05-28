@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { editor } from './editor'
+import { groupFiles } from '../lib/games'
 import type { MappingDetail } from '../api/client'
 
-let lastSyncBody: { intended: string[]; manualGroups: Record<string, string> } | null = null
+let lastSyncBody: {
+  intended: { name: string; dir: string }[]
+  manualGroups: Record<string, string>
+} | null = null
 
 type LoadFixture = {
   destFiles: string[]
+  /** Single-source shorthand: files live in the default source dir '/s'. */
   sourceFiles?: string[]
+  /** Explicit multi-source layout (overrides sourceFiles when present). */
+  sources?: { path: string; files: string[] }[]
+  primarySource?: string
   manualGroups?: Record<string, string>
   allowedExtensions?: string[]
 }
@@ -18,6 +26,11 @@ const DEFAULT_SOURCES = [
 ]
 
 let nextLoad: LoadFixture = { destFiles: ['Example Game 1 (USA).zip'] }
+
+/** The names sent in the last sync, sorted, ignoring source dir. */
+function syncedNames(): string[] {
+  return (lastSyncBody?.intended ?? []).map((f) => f.name).sort()
+}
 
 beforeEach(() => {
   lastSyncBody = null
@@ -34,7 +47,10 @@ beforeEach(() => {
         })
       }
       if (u.includes('/api/mappings/')) {
-        const sources = nextLoad.sourceFiles ?? DEFAULT_SOURCES
+        const sourceLayout = nextLoad.sources ?? [
+          { path: '/s', files: nextLoad.sourceFiles ?? DEFAULT_SOURCES },
+        ]
+        const manualGroups = nextLoad.manualGroups ?? {}
         // Annotated as MappingDetail so the compiler enforces shape
         // completeness — every required field on the real type must be
         // present, including any added later.
@@ -42,21 +58,19 @@ beforeEach(() => {
           mapping: {
             id: 'x',
             name: 'test',
-            sourcePath: '/s',
+            sourcePaths: sourceLayout.map((s) => s.path),
+            primarySource: nextLoad.primarySource ?? '',
             destPath: '/d',
-            manualGroups: nextLoad.manualGroups ?? {},
+            manualGroups,
             allowedExtensions: nextLoad.allowedExtensions ?? [],
             extractArchives: false,
           },
-          sourceFiles: sources,
+          sources: sourceLayout.map((s) => ({
+            path: s.path,
+            files: s.files,
+            groups: groupFiles(s.files, manualGroups),
+          })),
           destFiles: nextLoad.destFiles,
-          sourceGroups: [
-            {
-              prefix: 'Example Game 1',
-              files: ['Example Game 1 (USA).zip', 'Example Game 1 (Japan).zip'],
-            },
-            { prefix: 'Example Game 2', files: ['Example Game 2 (USA).zip'] },
-          ],
           effectivePreferences: ['USA', 'World'],
         }
         return new Response(JSON.stringify(detail), {
@@ -123,7 +137,7 @@ describe('editor', () => {
     expect(editor.isFileSelected('Example Game 1 (USA).zip')).toBe(false)
   })
 
-  it('sync sends the flat intended list and manualGroups', async () => {
+  it('sync sends the intended list (with source dirs) and manualGroups', async () => {
     await editor.load('x')
     editor.toggleFile('Example Game 1 (USA).zip') // deselect
     editor.toggleFile('Example Game 2 (USA).zip') // newly select
@@ -131,7 +145,9 @@ describe('editor', () => {
     await editor.sync()
 
     expect(lastSyncBody).not.toBeNull()
-    expect(lastSyncBody!.intended.sort()).toEqual(['Example Game 2 (USA).zip'])
+    expect(syncedNames()).toEqual(['Example Game 2 (USA).zip'])
+    // Each intended file carries the source directory it came from.
+    expect(lastSyncBody!.intended[0]).toEqual({ name: 'Example Game 2 (USA).zip', dir: '/s' })
   })
 
   it('treats an alt-ext dest file as satisfying its source counterpart', async () => {
@@ -417,6 +433,87 @@ describe('editor', () => {
     expect(editor.isFileSelected('Game (USA) (Track 1).bin')).toBe(true)
     expect(editor.isFileSelected('Game (USA) (Track 2).bin')).toBe(true)
     expect(editor.isFileSelected('Game (Japan).cue')).toBe(false)
+  })
+
+  it('derives selection from the union of all sources and tags each with its dir', async () => {
+    nextLoad = {
+      sources: [
+        { path: '/a', files: ['Game A (USA).zip'] },
+        { path: '/b', files: ['Game B (USA).zip'] },
+      ],
+      destFiles: ['Game A (USA).zip', 'Game B (USA).zip'],
+    }
+    await editor.load('x')
+    expect(editor.isFileSelected('Game A (USA).zip')).toBe(true)
+    expect(editor.isFileSelected('Game B (USA).zip')).toBe(true)
+    expect(editor.extraFiles()).toEqual([])
+
+    await editor.sync()
+    // Each file is sent with the directory it lives in.
+    const byName = Object.fromEntries(lastSyncBody!.intended.map((f) => [f.name, f.dir]))
+    expect(byName['Game A (USA).zip']).toBe('/a')
+    expect(byName['Game B (USA).zip']).toBe('/b')
+  })
+
+  it('starts on the primary source and switches with setActiveSource', async () => {
+    nextLoad = {
+      sources: [
+        { path: '/a', files: ['Game A (USA).zip'] },
+        { path: '/b', files: ['Game B (USA).zip'] },
+      ],
+      primarySource: '/b',
+      destFiles: [],
+    }
+    await editor.load('x')
+    // Primary loads first.
+    expect(editor.state.activeSource).toBe('/b')
+    expect(editor.sourceGroups().flatMap((g) => g.files)).toEqual(['Game B (USA).zip'])
+
+    editor.setActiveSource('/a')
+    expect(editor.state.activeSource).toBe('/a')
+    expect(editor.sourceGroups().flatMap((g) => g.files)).toEqual(['Game A (USA).zip'])
+  })
+
+  it('attributes a selection to the active source, even when the name exists in two', async () => {
+    // Same filename in both sources (a collision). Selecting it from the
+    // active source must credit that source; switching sources and toggling
+    // re-attributes it (you can never have it selected from both at once).
+    nextLoad = {
+      sources: [
+        { path: '/a', files: ['Shared (USA).zip'] },
+        { path: '/b', files: ['Shared (USA).zip'] },
+      ],
+      destFiles: [],
+    }
+    await editor.load('x')
+    expect(editor.state.activeSource).toBe('/a')
+
+    editor.toggleFile('Shared (USA).zip') // select from active source /a
+
+    // Switch to /b and re-toggle in place (no sync, which would rehydrate
+    // from the empty dest): off (it was selected), then on — now from /b.
+    editor.setActiveSource('/b')
+    editor.toggleFile('Shared (USA).zip') // deselect
+    expect(editor.isFileSelected('Shared (USA).zip')).toBe(false)
+    editor.toggleFile('Shared (USA).zip') // re-select, now from /b
+
+    await editor.sync()
+    expect(lastSyncBody!.intended).toEqual([{ name: 'Shared (USA).zip', dir: '/b' }])
+  })
+
+  it('sourceDirFor reports which source a synced dest file comes from', async () => {
+    nextLoad = {
+      sources: [
+        { path: '/a', files: ['Game A (USA).zip'] },
+        { path: '/b', files: ['Game B (USA).zip'] },
+      ],
+      destFiles: ['Game A (USA).zip', 'Game B (USA).zip'],
+    }
+    await editor.load('x')
+    expect(editor.sourceDirFor('Game A (USA).zip')).toBe('/a')
+    expect(editor.sourceDirFor('Game B (USA).zip')).toBe('/b')
+    // A file with no source counterpart has no source dir.
+    expect(editor.sourceDirFor('Unrelated.txt')).toBeUndefined()
   })
 
   it('rehydrates from disk after sync — no persisted selection state', async () => {

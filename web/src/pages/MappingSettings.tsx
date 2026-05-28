@@ -15,6 +15,14 @@ function setsEqual(a: readonly string[], b: readonly string[]): boolean {
   return true
 }
 
+// Order-sensitive equality — the source list's order is meaningful (it
+// drives the dropdown), so reordering counts as a change.
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
 const normalizeExtension = (raw: string): string => {
   const t = raw.trim().replace(/^\./, '').trim().toLowerCase()
   return t ? '.' + t : ''
@@ -39,12 +47,16 @@ export const MappingSettings: Component = () => {
   // Edit mapping details
   const [config, setConfig] = createSignal<AppConfigPayload | null>(null)
   const [editName, setEditName] = createSignal('')
-  const [editSourcePath, setEditSourcePath] = createSignal('')
+  const [editSourcePaths, setEditSourcePaths] = createSignal<string[]>([])
+  const [editPrimary, setEditPrimary] = createSignal('')
   const [editDestPath, setEditDestPath] = createSignal('')
   const [editAllowedExts, setEditAllowedExts] = createSignal<string[]>([])
   const [editExtractArchives, setEditExtractArchives] = createSignal(false)
+  // The source folder currently highlighted in the add-source browser.
+  const [candidateSource, setCandidateSource] = createSignal('')
   const [origName, setOrigName] = createSignal('')
-  const [origSourcePath, setOrigSourcePath] = createSignal('')
+  const [origSourcePaths, setOrigSourcePaths] = createSignal<string[]>([])
+  const [origPrimary, setOrigPrimary] = createSignal('')
   const [origDestPath, setOrigDestPath] = createSignal('')
   const [origAllowedExts, setOrigAllowedExts] = createSignal<string[]>([])
   const [origExtractArchives, setOrigExtractArchives] = createSignal(false)
@@ -55,11 +67,33 @@ export const MappingSettings: Component = () => {
   const editDirty = createMemo(
     () =>
       editName() !== origName() ||
-      editSourcePath() !== origSourcePath() ||
+      !arraysEqual(editSourcePaths(), origSourcePaths()) ||
+      editPrimary() !== origPrimary() ||
       editDestPath() !== origDestPath() ||
       !setsEqual(editAllowedExts(), origAllowedExts()) ||
       editExtractArchives() !== origExtractArchives(),
   )
+
+  // The effective primary: the explicit selection if still present,
+  // otherwise the first source (matching the server's fallback rule).
+  const effectivePrimary = createMemo(() => {
+    const p = editPrimary()
+    const list = editSourcePaths()
+    return p && list.includes(p) ? p : (list[0] ?? '')
+  })
+
+  const addSource = () => {
+    const candidate = candidateSource()
+    if (!candidate) return
+    setEditSourcePaths((prev) => (prev.includes(candidate) ? prev : [...prev, candidate]))
+  }
+
+  const removeSource = (path: string) => {
+    setEditSourcePaths((prev) => prev.filter((p) => p !== path))
+    if (editPrimary() === path) setEditPrimary('')
+  }
+
+  const makePrimary = (path: string) => setEditPrimary(path)
 
   // Preferences override
   const [globalPrefs, setGlobalPrefs] = createSignal<string[]>([])
@@ -86,13 +120,16 @@ export const MappingSettings: Component = () => {
 
       setConfig(cfg)
       setEditName(detail.mapping.name)
-      setEditSourcePath(detail.mapping.sourcePath)
+      const srcPaths = detail.mapping.sourcePaths
+      setEditSourcePaths(srcPaths)
+      setEditPrimary(detail.mapping.primarySource)
       setEditDestPath(detail.mapping.destPath)
       const exts = detail.mapping.allowedExtensions
       setEditAllowedExts(exts)
       setEditExtractArchives(detail.mapping.extractArchives)
       setOrigName(detail.mapping.name)
-      setOrigSourcePath(detail.mapping.sourcePath)
+      setOrigSourcePaths(srcPaths)
+      setOrigPrimary(detail.mapping.primarySource)
       setOrigDestPath(detail.mapping.destPath)
       setOrigAllowedExts(exts)
       setOrigExtractArchives(detail.mapping.extractArchives)
@@ -106,25 +143,29 @@ export const MappingSettings: Component = () => {
   // Edit handlers
   const saveEdit = async () => {
     setEditError(null)
-    if (!editName().trim() || !editSourcePath() || !editDestPath()) {
-      setEditError('All fields required.')
+    if (!editName().trim() || editSourcePaths().length === 0 || !editDestPath()) {
+      setEditError('A name, at least one source folder, and a destination are required.')
       return
     }
     setEditSaving(true)
     try {
       const updated = await api.updateMapping(params.id!, {
         name: editName().trim(),
-        sourcePath: editSourcePath(),
+        sourcePaths: editSourcePaths(),
+        primarySource: effectivePrimary(),
         destPath: editDestPath(),
         allowedExtensions: editAllowedExts(),
         extractArchives: editExtractArchives(),
       })
       setMappingName(updated.name)
       setOrigName(updated.name)
-      setOrigSourcePath(updated.sourcePath)
+      setOrigSourcePaths(updated.sourcePaths)
+      setOrigPrimary(updated.primarySource)
       setOrigDestPath(updated.destPath)
       setOrigAllowedExts(updated.allowedExtensions)
       setOrigExtractArchives(updated.extractArchives)
+      setEditSourcePaths(updated.sourcePaths)
+      setEditPrimary(updated.primarySource)
       setEditAllowedExts(updated.allowedExtensions)
       setEditExtractArchives(updated.extractArchives)
       setEditName(updated.name)
@@ -208,20 +249,77 @@ export const MappingSettings: Component = () => {
             </div>
             <Show when={config()}>
               {(cfg) => {
-                const srcInit = splitPath(editSourcePath(), cfg().sources)
                 const dstInit = splitPath(editDestPath(), cfg().dests)
                 return (
                   <>
                     <div>
-                      <h3>SOURCE FOLDER</h3>
-                      <FolderBrowser
-                        roots={cfg().sources}
-                        initialRoot={srcInit.root}
-                        initialSub={srcInit.sub}
-                        onSelect={setEditSourcePath}
-                      />
-                      <div class="text-dim" style={{ 'margin-top': '4px' }}>
-                        Selected: <span class="text-green">{editSourcePath() || '(none)'}</span>
+                      <h3>SOURCE FOLDERS</h3>
+                      <p class="text-dim" style={{ margin: '0 0 8px' }}>
+                        One or more read-only source folders feed this destination. The destination
+                        is reconciled against all of them; the primary loads first in the editor.
+                      </p>
+                      <ul class="source-list">
+                        <For
+                          each={editSourcePaths()}
+                          fallback={
+                            <li class="text-amber">No source folders — add at least one below.</li>
+                          }
+                        >
+                          {(path) => (
+                            <li class="source-list__item">
+                              <span class="source-list__path" title={path}>
+                                {path}
+                              </span>
+                              <Show
+                                when={effectivePrimary() === path}
+                                fallback={
+                                  <button
+                                    type="button"
+                                    class="tui-button"
+                                    disabled={editSaving()}
+                                    onClick={() => makePrimary(path)}
+                                  >
+                                    MAKE PRIMARY
+                                  </button>
+                                }
+                              >
+                                <span class="source-list__primary">PRIMARY</span>
+                              </Show>
+                              <button
+                                type="button"
+                                class="tui-button tui-button--danger"
+                                disabled={editSaving() || editSourcePaths().length <= 1}
+                                title={
+                                  editSourcePaths().length <= 1
+                                    ? 'A mapping needs at least one source'
+                                    : 'Remove this source'
+                                }
+                                onClick={() => removeSource(path)}
+                              >
+                                REMOVE
+                              </button>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                      <h3 style={{ 'margin-top': '12px' }}>ADD A SOURCE FOLDER</h3>
+                      <FolderBrowser roots={cfg().sources} onSelect={setCandidateSource} />
+                      <div class="row" style={{ 'margin-top': '6px', gap: '10px' }}>
+                        <button
+                          type="button"
+                          class="tui-button"
+                          disabled={
+                            editSaving() ||
+                            !candidateSource() ||
+                            editSourcePaths().includes(candidateSource())
+                          }
+                          onClick={addSource}
+                        >
+                          + ADD SOURCE
+                        </button>
+                        <span class="text-dim">
+                          Selected: <span class="text-green">{candidateSource() || '(none)'}</span>
+                        </span>
                       </div>
                     </div>
                     <div>

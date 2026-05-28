@@ -83,24 +83,40 @@ func (s *Server) handleCreateMapping(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name, sourcePath, destPath are required")
 		return
 	}
-	if _, err := fsutil.EnsureUnderRoot(req.SourcePath, s.cfg.Sources); err != nil {
+	// Store the canonical (absolutized, cleaned) paths so the persisted
+	// mapping matches what EnsureUnderRoot produces elsewhere (e.g. the
+	// per-file source validation in handleSync).
+	sourcePath, err := fsutil.EnsureUnderRoot(req.SourcePath, s.cfg.Sources)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "sourcePath must be under a configured --source root")
 		return
 	}
-	if _, err := fsutil.EnsureUnderRoot(req.DestPath, s.cfg.Dests); err != nil {
+	destPath, err := fsutil.EnsureUnderRoot(req.DestPath, s.cfg.Dests)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "destPath must be under a configured --dest root")
 		return
 	}
 	created, err := s.store.Add(config.Mapping{
-		Name:       req.Name,
-		SourcePath: req.SourcePath,
-		DestPath:   req.DestPath,
+		Name:        req.Name,
+		SourcePaths: []string{sourcePath},
+		DestPath:    destPath,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, created)
+}
+
+// sourceView is one configured source directory's contents, returned in
+// configured order so the editor can render the source-switcher dropdown
+// and show whichever source is active. A source dir that can't be read
+// (missing/permission) yields an empty file list rather than failing the
+// whole request — one bad source shouldn't break editing the others.
+type sourceView struct {
+	Path   string        `json:"path"`
+	Files  []string      `json:"files"`
+	Groups []games.Group `json:"groups"`
 }
 
 func (s *Server) handleGetMapping(w http.ResponseWriter, r *http.Request) {
@@ -111,23 +127,28 @@ func (s *Server) handleGetMapping(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	srcFiles, err := fsutil.ListFiles(m.SourcePath)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	sources := make([]sourceView, 0, len(m.SourcePaths))
+	for _, sp := range m.SourcePaths {
+		files, err := fsutil.ListFiles(sp)
+		if err != nil {
+			files = []string{}
+		}
+		sources = append(sources, sourceView{
+			Path:   sp,
+			Files:  files,
+			Groups: games.GroupFiles(files, m.ManualGroups),
+		})
 	}
+
 	destFiles, err := fsutil.ListFiles(m.DestPath)
 	if err != nil {
 		destFiles = []string{}
 	}
 
-	srcGroups := games.GroupFiles(srcFiles, m.ManualGroups)
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"mapping":              m,
-		"sourceFiles":          srcFiles,
+		"sources":              sources,
 		"destFiles":            destFiles,
-		"sourceGroups":         srcGroups,
 		"effectivePreferences": s.effectivePreferences(m),
 	})
 }
@@ -268,9 +289,72 @@ func cleanExtensions(in []string) []string {
 	return out
 }
 
+// cleanSourcePaths validates a mapping's source folder list: it trims
+// blanks, requires every entry to resolve under a configured --source
+// root (absolutizing it via EnsureUnderRoot), dedupes while preserving
+// order, and requires at least one survivor. The returned paths are
+// absolute and cleaned.
+func (s *Server) cleanSourcePaths(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, p := range in {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		abs, err := fsutil.EnsureUnderRoot(t, s.cfg.Sources)
+		if err != nil {
+			return nil, fmt.Errorf("source %q must be under a configured --source root", t)
+		}
+		if _, dup := seen[abs]; dup {
+			continue
+		}
+		seen[abs] = struct{}{}
+		out = append(out, abs)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("at least one source folder is required")
+	}
+	return out, nil
+}
+
+// mustAbs absolutizes a path, falling back to the input if the working
+// directory can't be resolved (which effectively never happens). Used to
+// canonicalize stored source paths for comparison against EnsureUnderRoot
+// output.
+func mustAbs(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	return abs
+}
+
+// resolvePrimarySource validates an optional primary-source selection: an
+// empty value means "use the first configured source" and resolves to "".
+// A non-empty value must absolutize (under a --source root) to one of the
+// already-cleaned sources. Returns the canonical absolute path to store.
+func resolvePrimarySource(primary string, sources, roots []string) (string, error) {
+	t := strings.TrimSpace(primary)
+	if t == "" {
+		return "", nil
+	}
+	abs, err := fsutil.EnsureUnderRoot(t, roots)
+	if err != nil {
+		return "", fmt.Errorf("primarySource must be under a configured --source root")
+	}
+	for _, sp := range sources {
+		if sp == abs {
+			return abs, nil
+		}
+	}
+	return "", fmt.Errorf("primarySource must be one of the mapping's source folders")
+}
+
 type updateMappingReq struct {
 	Name              string   `json:"name"`
-	SourcePath        string   `json:"sourcePath"`
+	SourcePaths       []string `json:"sourcePaths"`
+	PrimarySource     string   `json:"primarySource"`
 	DestPath          string   `json:"destPath"`
 	AllowedExtensions []string `json:"allowedExtensions"`
 	ExtractArchives   bool     `json:"extractArchives"`
@@ -288,24 +372,32 @@ func (s *Server) handleUpdateMapping(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if req.Name == "" || req.SourcePath == "" || req.DestPath == "" {
-		writeError(w, http.StatusBadRequest, "name, sourcePath, destPath are required")
+	if req.Name == "" || req.DestPath == "" {
+		writeError(w, http.StatusBadRequest, "name and destPath are required")
 		return
 	}
-	if _, err := fsutil.EnsureUnderRoot(req.SourcePath, s.cfg.Sources); err != nil {
-		writeError(w, http.StatusBadRequest, "sourcePath must be under a configured --source root")
+	sources, err := s.cleanSourcePaths(req.SourcePaths)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := fsutil.EnsureUnderRoot(req.DestPath, s.cfg.Dests); err != nil {
+	destPath, err := fsutil.EnsureUnderRoot(req.DestPath, s.cfg.Dests)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "destPath must be under a configured --dest root")
 		return
 	}
+	primary, err := resolvePrimarySource(req.PrimarySource, sources, s.cfg.Sources)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	m.Name = req.Name
-	m.SourcePath = req.SourcePath
-	m.DestPath = req.DestPath
+	m.SourcePaths = sources
+	m.PrimarySource = primary
+	m.DestPath = destPath
 	m.AllowedExtensions = cleanExtensions(req.AllowedExtensions)
 	m.ExtractArchives = req.ExtractArchives
-	ok, err := s.store.Update(m)
+	ok, err = s.store.Update(m)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -332,15 +424,21 @@ func (s *Server) handleDeleteMapping(w http.ResponseWriter, r *http.Request) {
 }
 
 type syncReq struct {
-	Intended     []string          `json:"intended"`
-	ManualGroups map[string]string `json:"manualGroups"`
+	Intended     []fsutil.SourceFile `json:"intended"`
+	ManualGroups map[string]string   `json:"manualGroups"`
 }
 
 // handleSync persists the request's manual-group overrides, then
-// reconciles the destination directory with the intended file set:
-// copy each intended file missing from dest, delete each dest file
-// that has a source counterpart but is no longer intended. Files in
-// dest with no source counterpart ("orange extras") are never touched.
+// reconciles the destination directory against the intended file set
+// drawn from the union of the mapping's source directories: copy each
+// intended file missing from dest (from the source dir it was selected
+// from), delete each dest file that has a source counterpart but is no
+// longer intended. Files in dest with no source counterpart ("orange
+// extras") are never touched.
+//
+// Each intended file's Dir must be one of the mapping's configured
+// source folders — this both fixes the copy origin and guards against a
+// client asking the server to copy from an arbitrary directory.
 func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	m, ok := s.store.Get(id)
@@ -358,10 +456,36 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		req.ManualGroups = map[string]string{}
 	}
 
-	srcFiles, err := fsutil.ListFiles(m.SourcePath)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	// Validate and canonicalize each intended file's source dir against
+	// the mapping's configured sources, and accumulate the union of all
+	// source files for the deletion ("managed") oracle. The allowed set is
+	// keyed on absolutized+cleaned paths so it matches EnsureUnderRoot's
+	// canonical output even for mappings whose stored paths predate
+	// canonicalization (e.g. migrated legacy entries).
+	allowed := make(map[string]struct{}, len(m.SourcePaths))
+	for _, sp := range m.SourcePaths {
+		allowed[filepath.Clean(mustAbs(sp))] = struct{}{}
+	}
+	for i := range req.Intended {
+		abs, err := fsutil.EnsureUnderRoot(req.Intended[i].Dir, s.cfg.Sources)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "intended file source must be under a configured --source root")
+			return
+		}
+		if _, ok := allowed[abs]; !ok {
+			writeError(w, http.StatusBadRequest, "intended file source is not one of this mapping's source folders")
+			return
+		}
+		req.Intended[i].Dir = abs
+	}
+
+	var srcFiles []string
+	for _, sp := range m.SourcePaths {
+		files, err := fsutil.ListFiles(sp)
+		if err != nil {
+			continue
+		}
+		srcFiles = append(srcFiles, files...)
 	}
 
 	plan, err := fsutil.ComputeSync(req.Intended, srcFiles, m.DestPath, m.AllowedExtensions)
@@ -376,12 +500,16 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := fsutil.ExecuteSync(m.SourcePath, m.DestPath, plan, m.ExtractArchives); err != nil {
+	if err := fsutil.ExecuteSync(m.DestPath, plan, m.ExtractArchives); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	copied := make([]string, len(plan.ToCopy))
+	for i, f := range plan.ToCopy {
+		copied[i] = f.Name
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"copied":  plan.ToCopy,
+		"copied":  copied,
 		"deleted": plan.ToDelete,
 	})
 }

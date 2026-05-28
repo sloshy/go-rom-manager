@@ -1,4 +1,4 @@
-import { Component, For, Show, createMemo, createSignal } from 'solid-js'
+import { Component, For, JSX, Show, createMemo, createSignal } from 'solid-js'
 import { FilterChipInput } from './FilterChipInput'
 import { GameRow } from './GameRow'
 import { TagFilterMenu } from './TagFilterMenu'
@@ -16,8 +16,12 @@ import {
 
 export interface GameColumnProps {
   title: string
+  /** Optional interactive element rendered after the title (e.g. the source switcher). */
+  titleMenu?: JSX.Element
   side: 'source' | 'destination'
   groups: GameGroup[]
+  /** Optional per-file subtext (e.g. which source a dest file comes from). */
+  fileSubtext?: (filename: string) => string | undefined
   /** Destination files the user has just deselected (was managed, now isn't). */
   filesToRemove?: string[]
   /** Destination files with no source counterpart (locked, must persist). */
@@ -149,7 +153,10 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
   return (
     <div class="tui-panel">
       <div class="tui-titlebar">
-        <span>{props.title}</span>
+        <span class="tui-titlebar__title">
+          {props.title}
+          <Show when={props.titleMenu}>{props.titleMenu}</Show>
+        </span>
         <span class="text-dim">{props.groups.length} TITLES</span>
       </div>
       <div style={{ padding: '10px 10px 0' }}>
@@ -210,6 +217,7 @@ export const GameColumn: Component<GameColumnProps> = (props) => {
                 onToggleFile={props.onToggleFile}
                 onToggleBundle={props.onToggleBundle}
                 onContextFile={props.onContextFile}
+                fileSubtext={props.fileSubtext}
               />
             )}
           </For>

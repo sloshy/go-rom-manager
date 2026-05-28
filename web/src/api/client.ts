@@ -21,7 +21,13 @@ export interface BrowsePayload {
 export interface Mapping {
   id: string
   name: string
-  sourcePath: string
+  /** Ordered list of read-only source folders feeding the destination. */
+  sourcePaths: string[]
+  /**
+   * Source folder the editor loads first. Empty means "use the first
+   * entry of sourcePaths". Always one of sourcePaths when set.
+   */
+  primarySource: string
   destPath: string
   manualGroups: Record<string, string>
   /** Per-mapping preference override; absent/null means inherit global. */
@@ -42,11 +48,18 @@ export interface Mapping {
   extractArchives: boolean
 }
 
+/** One configured source folder's contents, as returned with a mapping. */
+export interface SourceView {
+  path: string
+  files: string[]
+  groups: { prefix: string; files: string[] }[]
+}
+
 export interface MappingDetail {
   mapping: Mapping
-  sourceFiles: string[]
+  /** Per-source contents, in configured order. */
+  sources: SourceView[]
   destFiles: string[]
-  sourceGroups: { prefix: string; files: string[] }[]
   /** Resolved preference list — the per-mapping override if set, otherwise the global. */
   effectivePreferences: string[]
 }
@@ -54,6 +67,12 @@ export interface MappingDetail {
 export interface SyncResult {
   copied: string[]
   deleted: string[]
+}
+
+/** One intended file plus the source directory it should be copied from. */
+export interface IntendedFile {
+  name: string
+  dir: string
 }
 
 export interface SettingsPayload {
@@ -68,7 +87,8 @@ export interface MappingPreferencesPayload {
 
 export interface UpdateMappingBody {
   name: string
-  sourcePath: string
+  sourcePaths: string[]
+  primarySource: string
   destPath: string
   allowedExtensions: string[]
   extractArchives: boolean
@@ -128,7 +148,7 @@ export const api = {
 
   deleteMapping: (id: string) => jsonFetch<void>(`/api/mappings/${id}`, { method: 'DELETE' }),
 
-  sync: (id: string, body: { intended: string[]; manualGroups: Record<string, string> }) =>
+  sync: (id: string, body: { intended: IntendedFile[]; manualGroups: Record<string, string> }) =>
     jsonFetch<SyncResult>(`/api/mappings/${id}/sync`, {
       method: 'POST',
       body: JSON.stringify(body),

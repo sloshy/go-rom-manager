@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -155,6 +156,46 @@ func TestStore_ExtractArchivesPersists(t *testing.T) {
 	got, _ := s2.Get(added.ID)
 	if !got.ExtractArchives {
 		t.Errorf("ExtractArchives didn't persist across reloads, got %+v", got)
+	}
+}
+
+func TestStore_MigratesLegacySourcePath(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+
+	// A legacy mappings.json written before multi-source support: a single
+	// "sourcePath" field and no "sourcePaths".
+	legacy := `{
+	  "mappings": [
+	    { "id": "abc", "name": "Legacy", "sourcePath": "/src/legacy", "destPath": "/dst/legacy" }
+	  ]
+	}`
+	if err := os.WriteFile(storePath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := NewStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := s.Get("abc")
+	if !ok {
+		t.Fatal("legacy mapping not loaded")
+	}
+	if len(got.SourcePaths) != 1 || got.SourcePaths[0] != "/src/legacy" {
+		t.Errorf("SourcePaths=%v, want [/src/legacy] migrated from sourcePath", got.SourcePaths)
+	}
+	if got.SourcePath != "" {
+		t.Errorf("legacy SourcePath should be cleared after migration, got %q", got.SourcePath)
+	}
+
+	// Saving must drop the legacy field entirely (omitempty + cleared).
+	if _, err := s.Update(got); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(storePath)
+	if strings.Contains(string(data), "\"sourcePath\"") {
+		t.Errorf("persisted JSON should not contain the legacy sourcePath field:\n%s", data)
 	}
 }
 

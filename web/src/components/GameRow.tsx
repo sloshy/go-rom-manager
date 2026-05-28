@@ -18,6 +18,8 @@ export interface GameRowProps {
   onToggleBundle?: (files: string[]) => void
   onTogglePrefix?: () => void
   onContextFile?: (filename: string, evt: MouseEvent) => void
+  /** Optional small caption under a file (e.g. the source it comes from). */
+  fileSubtext?: (filename: string) => string | undefined
   disabled?: boolean
 }
 
@@ -72,7 +74,12 @@ export const GameRow: Component<GameRowProps> = (props) => {
                       onChange={() => props.onToggleFile?.(f)}
                     />
                   </Show>
-                  <span class="filename">{f}</span>
+                  <span class="file-cell">
+                    <span class="filename">{f}</span>
+                    <Show when={props.fileSubtext?.(f)}>
+                      {(sub) => <span class="file-source text-muted">from {sub()}</span>}
+                    </Show>
+                  </span>
                 </li>
               )}
             </For>
@@ -112,14 +119,21 @@ export const GameRow: Component<GameRowProps> = (props) => {
                       }}
                     />
                   </Show>
-                  <span class="filename">{label()}</span>
-                  <Show when={isMulti}>
-                    <span class="bundle-exts text-muted" style={{ 'margin-left': '6px' }}>
-                      <For each={b.extensions}>
-                        {(ext) => <span class="bundle-ext">[{ext.replace(/^\./, '')}]</span>}
-                      </For>
+                  <span class="file-cell">
+                    <span class="file-line">
+                      <span class="filename">{label()}</span>
+                      <Show when={isMulti}>
+                        <span class="bundle-exts text-muted" style={{ 'margin-left': '6px' }}>
+                          <For each={b.extensions}>
+                            {(ext) => <span class="bundle-ext">[{ext.replace(/^\./, '')}]</span>}
+                          </For>
+                        </span>
+                      </Show>
                     </span>
-                  </Show>
+                    <Show when={props.fileSubtext?.(head)}>
+                      {(sub) => <span class="file-source text-muted">from {sub()}</span>}
+                    </Show>
+                  </span>
                 </li>
               )
             }}

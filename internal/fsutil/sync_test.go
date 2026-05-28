@@ -17,23 +17,46 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+// intend builds an intended file list, tagging each name with the given
+// source directory. ComputeSync only reads the destination directory, so
+// dir is irrelevant to its diff logic and may be empty for those tests;
+// it matters only for ExecuteSync, which copies from each file's dir.
+func intend(dir string, names ...string) []SourceFile {
+	out := make([]SourceFile, len(names))
+	for i, n := range names {
+		out[i] = SourceFile{Name: n, Dir: dir}
+	}
+	return out
+}
+
+// copyNames extracts the basenames of a plan's ToCopy entries for
+// order-independent assertions.
+func copyNames(plan SyncPlan) []string {
+	out := make([]string, len(plan.ToCopy))
+	for i, f := range plan.ToCopy {
+		out[i] = f.Name
+	}
+	return out
+}
+
 func TestComputeSync_DiffsCorrectly(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "Example Game 1 (USA).zip"), "a")
 	writeFile(t, filepath.Join(dir, "extras.txt"), "b")
 
-	intended := []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"}
+	intended := intend("", "Example Game 1 (USA).zip", "Example Game 2 (USA).zip")
 	sourceFiles := []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"}
 
 	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sort.Strings(plan.ToCopy)
+	toCopy := copyNames(plan)
+	sort.Strings(toCopy)
 	sort.Strings(plan.ToDelete)
 
-	if len(plan.ToCopy) != 1 || plan.ToCopy[0] != "Example Game 2 (USA).zip" {
-		t.Errorf("ToCopy=%v, want [Example Game 2 (USA).zip]", plan.ToCopy)
+	if len(toCopy) != 1 || toCopy[0] != "Example Game 2 (USA).zip" {
+		t.Errorf("ToCopy=%v, want [Example Game 2 (USA).zip]", toCopy)
 	}
 	if len(plan.ToDelete) != 0 {
 		t.Errorf("ToDelete=%v, want empty (extras.txt has no source counterpart)", plan.ToDelete)
@@ -45,7 +68,7 @@ func TestComputeSync_DeletesDeselectedFilesWithSourceCounterpart(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "Example Game 1 (USA).zip"), "a")
 	writeFile(t, filepath.Join(dir, "Example Game 2 (USA).zip"), "b")
 
-	intended := []string{"Example Game 1 (USA).zip"}
+	intended := intend("", "Example Game 1 (USA).zip")
 	sourceFiles := []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"}
 
 	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
@@ -53,7 +76,7 @@ func TestComputeSync_DeletesDeselectedFilesWithSourceCounterpart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 0 {
-		t.Errorf("ToCopy=%v, want none", plan.ToCopy)
+		t.Errorf("ToCopy=%v, want none", copyNames(plan))
 	}
 	if len(plan.ToDelete) != 1 || plan.ToDelete[0] != "Example Game 2 (USA).zip" {
 		t.Errorf("ToDelete=%v, want [Example Game 2 (USA).zip]", plan.ToDelete)
@@ -66,7 +89,7 @@ func TestComputeSync_PreservesFilesWithoutSourceCounterpart(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "out_of_band.txt"), "x")
 	writeFile(t, filepath.Join(dir, "another_orphan.bin"), "y")
 
-	intended := []string{"Example Game 1 (USA).zip"}
+	intended := intend("", "Example Game 1 (USA).zip")
 	sourceFiles := []string{"Example Game 1 (USA).zip"}
 
 	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
@@ -81,7 +104,7 @@ func TestComputeSync_PreservesFilesWithoutSourceCounterpart(t *testing.T) {
 func TestComputeSync_NonExistentDestTreatedAsEmpty(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "missing")
 	plan, err := ComputeSync(
-		[]string{"Example Game 1 (USA).zip"},
+		intend("", "Example Game 1 (USA).zip"),
 		[]string{"Example Game 1 (USA).zip"},
 		dir,
 		nil,
@@ -90,7 +113,41 @@ func TestComputeSync_NonExistentDestTreatedAsEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 1 {
-		t.Errorf("ToCopy=%v, want 1 entry", plan.ToCopy)
+		t.Errorf("ToCopy=%v, want 1 entry", copyNames(plan))
+	}
+}
+
+func TestComputeSync_UnionAcrossSources(t *testing.T) {
+	// Two intended files come from two different source directories. Both
+	// must be queued for copy and each ToCopy entry must carry the dir it
+	// came from so ExecuteSync copies from the right place.
+	dir := t.TempDir()
+	srcA := "/sources/a"
+	srcB := "/sources/b"
+
+	intended := []SourceFile{
+		{Name: "Example Game 1 (USA).zip", Dir: srcA},
+		{Name: "Example Game 2 (Japan).zip", Dir: srcB},
+	}
+	// Union of both source directories.
+	sourceFiles := []string{"Example Game 1 (USA).zip", "Example Game 2 (Japan).zip"}
+
+	plan, err := ComputeSync(intended, sourceFiles, dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.ToCopy) != 2 {
+		t.Fatalf("ToCopy=%v, want 2 entries", plan.ToCopy)
+	}
+	gotDir := map[string]string{}
+	for _, f := range plan.ToCopy {
+		gotDir[f.Name] = f.Dir
+	}
+	if gotDir["Example Game 1 (USA).zip"] != srcA {
+		t.Errorf("Game 1 dir=%q, want %q", gotDir["Example Game 1 (USA).zip"], srcA)
+	}
+	if gotDir["Example Game 2 (Japan).zip"] != srcB {
+		t.Errorf("Game 2 dir=%q, want %q", gotDir["Example Game 2 (Japan).zip"], srcB)
 	}
 }
 
@@ -102,7 +159,7 @@ func TestComputeSync_AltExtSatisfiesIntent(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "Example Game.rvz"), "rvz")
 
 	plan, err := ComputeSync(
-		[]string{"Example Game.zip"},
+		intend("", "Example Game.zip"),
 		[]string{"Example Game.zip"},
 		dir,
 		[]string{".rvz"},
@@ -111,7 +168,7 @@ func TestComputeSync_AltExtSatisfiesIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 0 {
-		t.Errorf("ToCopy=%v, want empty (Example Game.rvz already satisfies)", plan.ToCopy)
+		t.Errorf("ToCopy=%v, want empty (Example Game.rvz already satisfies)", copyNames(plan))
 	}
 	if len(plan.ToDelete) != 0 {
 		t.Errorf("ToDelete=%v, want empty (Example Game.rvz alt-ext matches Example Game.zip)", plan.ToDelete)
@@ -166,7 +223,7 @@ func TestComputeSync_AltExtCaseInsensitive(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "Example Game.RVZ"), "rvz")
 
 	plan, err := ComputeSync(
-		[]string{"Example Game.zip"},
+		intend("", "Example Game.zip"),
 		[]string{"Example Game.zip"},
 		dir,
 		[]string{".rvz"},
@@ -175,7 +232,7 @@ func TestComputeSync_AltExtCaseInsensitive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 0 || len(plan.ToDelete) != 0 {
-		t.Errorf("expected no-op, got ToCopy=%v ToDelete=%v", plan.ToCopy, plan.ToDelete)
+		t.Errorf("expected no-op, got ToCopy=%v ToDelete=%v", copyNames(plan), plan.ToDelete)
 	}
 }
 
@@ -191,7 +248,7 @@ func TestComputeSync_AltExtVariantKeyMatchesMultiTrackFiles(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "Game (Track 2).bin"), "b2")
 
 	plan, err := ComputeSync(
-		[]string{"Game.zip"},
+		intend("", "Game.zip"),
 		[]string{"Game.zip"},
 		dir,
 		[]string{".bin", ".cue"},
@@ -200,7 +257,7 @@ func TestComputeSync_AltExtVariantKeyMatchesMultiTrackFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 0 {
-		t.Errorf("ToCopy=%v, want empty (variant-key match should satisfy intent)", plan.ToCopy)
+		t.Errorf("ToCopy=%v, want empty (variant-key match should satisfy intent)", copyNames(plan))
 	}
 	if len(plan.ToDelete) != 0 {
 		t.Errorf("ToDelete=%v, want empty (track files share VariantKey with source zip)", plan.ToDelete)
@@ -248,7 +305,7 @@ func TestComputeSync_DifferentDiscsRemainDistinct(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "Game (Disc 2) (Track 1).bin"), "2b")
 
 	plan, err := ComputeSync(
-		[]string{"Game (Disc 1).zip"},
+		intend("", "Game (Disc 1).zip"),
 		[]string{"Game (Disc 1).zip", "Game (Disc 2).zip"},
 		dir,
 		[]string{".bin", ".cue"},
@@ -257,7 +314,7 @@ func TestComputeSync_DifferentDiscsRemainDistinct(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(plan.ToCopy) != 0 {
-		t.Errorf("ToCopy=%v, want empty (disc 1 is satisfied by alt-ext)", plan.ToCopy)
+		t.Errorf("ToCopy=%v, want empty (disc 1 is satisfied by alt-ext)", copyNames(plan))
 	}
 	sort.Strings(plan.ToDelete)
 	want := []string{"Game (Disc 2) (Track 1).bin", "Game (Disc 2).cue"}
@@ -280,10 +337,10 @@ func TestExecuteSync_CopiesAndDeletes(t *testing.T) {
 	writeFile(t, filepath.Join(dst, "stale.zip"), "old")
 
 	plan := SyncPlan{
-		ToCopy:   []string{"Example Game 1 (USA).zip", "Example Game 2 (USA).zip"},
+		ToCopy:   intend(src, "Example Game 1 (USA).zip", "Example Game 2 (USA).zip"),
 		ToDelete: []string{"stale.zip"},
 	}
-	if err := ExecuteSync(src, dst, plan, false); err != nil {
+	if err := ExecuteSync(dst, plan, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,6 +364,35 @@ func TestExecuteSync_CopiesAndDeletes(t *testing.T) {
 	}
 }
 
+func TestExecuteSync_CopiesFromPerFileDir(t *testing.T) {
+	// Each ToCopy entry names its own source directory — ExecuteSync must
+	// copy each file from the dir it carries, not from a single shared one.
+	srcA := t.TempDir()
+	srcB := t.TempDir()
+	dst := t.TempDir()
+	writeFile(t, filepath.Join(srcA, "From A.zip"), "a-content")
+	writeFile(t, filepath.Join(srcB, "From B.zip"), "b-content")
+
+	plan := SyncPlan{
+		ToCopy: []SourceFile{
+			{Name: "From A.zip", Dir: srcA},
+			{Name: "From B.zip", Dir: srcB},
+		},
+	}
+	if err := ExecuteSync(dst, plan, false); err != nil {
+		t.Fatal(err)
+	}
+
+	a, _ := os.ReadFile(filepath.Join(dst, "From A.zip"))
+	b, _ := os.ReadFile(filepath.Join(dst, "From B.zip"))
+	if string(a) != "a-content" {
+		t.Errorf("From A.zip content=%q, want %q", a, "a-content")
+	}
+	if string(b) != "b-content" {
+		t.Errorf("From B.zip content=%q, want %q", b, "b-content")
+	}
+}
+
 func TestExecuteSync_DoesNotMutateSource(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
@@ -315,8 +401,8 @@ func TestExecuteSync_DoesNotMutateSource(t *testing.T) {
 	srcInfoBefore, _ := os.Stat(filepath.Join(src, "Example Game 1 (USA).zip"))
 	srcEntriesBefore, _ := ListFiles(src)
 
-	plan := SyncPlan{ToCopy: []string{"Example Game 1 (USA).zip"}}
-	if err := ExecuteSync(src, dst, plan, false); err != nil {
+	plan := SyncPlan{ToCopy: intend(src, "Example Game 1 (USA).zip")}
+	if err := ExecuteSync(dst, plan, false); err != nil {
 		t.Fatal(err)
 	}
 

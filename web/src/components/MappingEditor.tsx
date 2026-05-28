@@ -2,8 +2,10 @@ import { Component, Show, createMemo, createSignal, onCleanup, onMount } from 's
 import { A } from '@solidjs/router'
 import { editor } from '../stores/editor'
 import { GameColumn } from './GameColumn'
+import { SourceDropdown } from './SourceDropdown'
 import { SyncToolbar } from './SyncToolbar'
 import { ManualGroupMenu } from './ManualGroupMenu'
+import { sourceLabel } from '../lib/paths'
 
 export interface MappingEditorProps {
   id: string
@@ -24,8 +26,9 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
     onCleanup(() => window.removeEventListener('click', close))
   })
 
-  const sourceGroups = createMemo(() => editor.state.detail?.sourceGroups ?? [])
+  const sourceGroups = createMemo(() => editor.sourceGroups())
   const knownPrefixes = createMemo(() => sourceGroups().map((g) => g.prefix))
+  const sourcePaths = createMemo(() => editor.state.detail?.mapping.sourcePaths ?? [])
 
   const onSync = async () => {
     setSyncing(true)
@@ -48,7 +51,8 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
       <div class="row" style={{ 'margin-bottom': '8px' }}>
         <h2 style={{ margin: 0 }}>{editor.state.detail!.mapping.name}</h2>
         <span class="text-dim" style={{ 'margin-left': 'auto' }}>
-          {editor.state.detail!.mapping.sourcePath} → {editor.state.detail!.mapping.destPath}
+          {sourcePaths().length === 1 ? sourcePaths()[0] : `${sourcePaths().length} sources`} →{' '}
+          {editor.state.detail!.mapping.destPath}
         </span>
         <A href={`/mapping/${props.id}/settings`} class="crumbs">
           [SETTINGS]
@@ -60,7 +64,15 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
 
       <div class="tui-grid-2" style={{ flex: 1, 'min-height': 0, overflow: 'hidden' }}>
         <GameColumn
-          title="SOURCE // ROMS"
+          title="SOURCE //"
+          titleMenu={
+            <SourceDropdown
+              sources={sourcePaths()}
+              active={editor.state.activeSource}
+              primary={editor.state.detail!.mapping.primarySource}
+              onSelect={(p) => editor.setActiveSource(p)}
+            />
+          }
           side="source"
           groups={sourceGroups()}
           isFileSelected={(f) => editor.isFileSelected(f)}
@@ -77,6 +89,16 @@ export const MappingEditor: Component<MappingEditorProps> = (props) => {
           groups={editor.destProjectionGroups()}
           filesToRemove={editor.filesToRemove()}
           extraFiles={editor.extraFiles()}
+          // Show which source each synced file comes from when more than
+          // one source feeds this destination; redundant with a single source.
+          fileSubtext={
+            sourcePaths().length > 1
+              ? (f) => {
+                  const dir = editor.sourceDirFor(f)
+                  return dir ? sourceLabel(dir) : undefined
+                }
+              : undefined
+          }
           // Dest-side displays may show alt-ext filenames (e.g. Game.rvz)
           // while state.selected is keyed on source filenames (Game.zip);
           // every interaction goes through destNameToSource so toggles

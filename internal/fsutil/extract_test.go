@@ -164,7 +164,7 @@ func TestExecuteSync_ExtractPreservesNames(t *testing.T) {
 	// alt-ext variant-key matching keeps them connected to the source
 	// for sync purposes — including the (Track 1) file whose stem
 	// differs but whose VariantKey is the same.
-	intended := []string{"Sample Title.zip"}
+	intended := intend(src, "Sample Title.zip")
 	sourceFiles := []string{"Sample Title.zip"}
 	allowedExts := []string{".bin", ".cue"}
 
@@ -172,7 +172,7 @@ func TestExecuteSync_ExtractPreservesNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ExecuteSync(src, dst, plan, true); err != nil {
+	if err := ExecuteSync(dst, plan, true); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := ListFiles(dst)
@@ -205,8 +205,8 @@ func TestExecuteSync_NoExtractWhenFlagOff(t *testing.T) {
 	zipPath := filepath.Join(src, "Game.zip")
 	makeZip(t, zipPath, map[string]string{"rom.bin": "x"})
 
-	plan := SyncPlan{ToCopy: []string{"Game.zip"}}
-	if err := ExecuteSync(src, dst, plan, false); err != nil {
+	plan := SyncPlan{ToCopy: intend(src, "Game.zip")}
+	if err := ExecuteSync(dst, plan, false); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := ListFiles(dst)
