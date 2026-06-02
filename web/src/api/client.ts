@@ -33,6 +33,12 @@ export interface Mapping {
   /** Per-mapping preference override; absent/null means inherit global. */
   preferences?: string[] | null
   /**
+   * Per-mapping low-priority-tags override; absent/null means inherit the
+   * global list. A present array (even empty, meaning "demote nothing") is
+   * an explicit override.
+   */
+  lowPriorityTags?: string[] | null
+  /**
    * Dest-side alt-format extensions (e.g. ".rvz") considered equivalent
    * to a source file with the same basename. Always normalized to
    * lowercase ".ext" form by the server and always serialized as an
@@ -62,6 +68,8 @@ export interface MappingDetail {
   destFiles: string[]
   /** Resolved preference list — the per-mapping override if set, otherwise the global. */
   effectivePreferences: string[]
+  /** Resolved low-priority-tags list — per-mapping override if set, otherwise the global/default. */
+  effectiveLowPriorityTags: string[]
 }
 
 export interface SyncResult {
@@ -78,11 +86,24 @@ export interface IntendedFile {
 export interface SettingsPayload {
   preferences: string[]
   defaultPreferences: string[]
+  lowPriorityTags: string[]
+  defaultLowPriorityTags: string[]
+}
+
+/** Partial global-settings update — each field is updated only if present. */
+export interface UpdateSettingsBody {
+  preferences?: string[]
+  lowPriorityTags?: string[]
 }
 
 export interface MappingPreferencesPayload {
   mapping: Mapping
   effectivePreferences: string[]
+}
+
+export interface MappingLowPriorityPayload {
+  mapping: Mapping
+  effectiveLowPriorityTags: string[]
 }
 
 export interface UpdateMappingBody {
@@ -156,10 +177,15 @@ export const api = {
 
   getSettings: () => jsonFetch<SettingsPayload>('/api/settings'),
 
-  updateSettings: (preferences: string[]) =>
-    jsonFetch<{ preferences: string[] }>('/api/settings', {
+  /**
+   * Update one or more global settings lists. Omitted fields are left
+   * unchanged server-side, so each settings panel can save independently.
+   * Returns the full resolved settings.
+   */
+  updateSettings: (body: UpdateSettingsBody) =>
+    jsonFetch<SettingsPayload>('/api/settings', {
       method: 'PUT',
-      body: JSON.stringify({ preferences }),
+      body: JSON.stringify(body),
     }),
 
   /**
@@ -170,6 +196,16 @@ export const api = {
     jsonFetch<MappingPreferencesPayload>(`/api/mappings/${id}/preferences`, {
       method: 'PUT',
       body: JSON.stringify({ preferences }),
+    }),
+
+  /**
+   * Replace a mapping's low-priority-tags override. Pass null to clear the
+   * override and inherit the global list again.
+   */
+  updateMappingLowPriorityTags: (id: string, lowPriorityTags: string[] | null) =>
+    jsonFetch<MappingLowPriorityPayload>(`/api/mappings/${id}/low-priority-tags`, {
+      method: 'PUT',
+      body: JSON.stringify({ lowPriorityTags }),
     }),
 
   getLicenses: () => jsonFetch<LicenseManifest>('/api/licenses'),

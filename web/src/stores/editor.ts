@@ -189,7 +189,8 @@ function togglePrefix(files: string[]) {
         s.dirty = true
       } else {
         const prefs = s.detail?.effectivePreferences
-        const pick = autoSelectVariant(files, prefs)
+        const lowPrio = s.detail?.effectiveLowPriorityTags
+        const pick = autoSelectVariant(files, prefs, lowPrio)
         let changed = false
         for (const f of pick) {
           if (s.selected[f] === undefined) {
@@ -254,9 +255,10 @@ function selectAllGroups(allGroupFiles: string[][]) {
   setState(
     produce((s) => {
       const prefs = s.detail?.effectivePreferences
+      const lowPrio = s.detail?.effectiveLowPriorityTags
       let changed = false
       for (const files of allGroupFiles) {
-        const pick = autoSelectVariant(files, prefs)
+        const pick = autoSelectVariant(files, prefs, lowPrio)
         const pickSet = new Set(pick)
         const currentlySelected = files.filter((f) => s.selected[f] !== undefined)
         const alreadyCorrect =

@@ -12,24 +12,33 @@ var revRegexp = regexp.MustCompile(`(?i)^Rev\s*(\d+)$`)
 // to whatever remains.
 var DefaultPreferences = []string{"USA", "World"}
 
+// DefaultLowPriorityTags lists the tags that mark a variant as a last
+// resort: a file carrying any of them is only selected when its game has
+// no other variant. Demo and Proto were the original hardcoded exclusions;
+// Sample is included by default for the same reason. Tags are matched
+// case-insensitively (see Parsed.HasTag) and the list is overridable both
+// globally and per-mapping.
+var DefaultLowPriorityTags = []string{"Demo", "Proto", "Sample"}
+
 // AutoSelect picks the "best" file from a group of files that share a
-// prefix using DefaultPreferences. See AutoSelectWith for the
-// preference-aware variant.
+// prefix using DefaultPreferences and DefaultLowPriorityTags. See
+// AutoSelectWith for the configurable variant.
 func AutoSelect(files []string) string {
-	return AutoSelectWith(files, DefaultPreferences)
+	return AutoSelectWith(files, DefaultPreferences, DefaultLowPriorityTags)
 }
 
 // AutoSelectWith picks the "best" file from a group of files that share
 // a prefix, following the project's selection priority:
 //
-//  1. Drop files tagged Demo or Proto when at least one non-Demo/Proto exists.
+//  1. Drop files carrying any low-priority tag when at least one file with
+//     no low-priority tag exists.
 //  2. Walk preferences in order; the first tag that matches at least one
 //     candidate wins. Empty preference strings are skipped.
 //  3. Among ties (or when no preference matches), pick the highest revision
 //     (Rev N).
 //
 // AutoSelectWith returns "" if files is empty.
-func AutoSelectWith(files []string, preferences []string) string {
+func AutoSelectWith(files []string, preferences, lowPriorityTags []string) string {
 	if len(files) == 0 {
 		return ""
 	}
@@ -39,7 +48,7 @@ func AutoSelectWith(files []string, preferences []string) string {
 		parsed[i] = ParseName(f)
 	}
 
-	candidates := filterPlayable(parsed)
+	candidates := dropLowPriority(parsed, lowPriorityTags)
 	if len(candidates) == 0 {
 		candidates = parsed
 	}
@@ -55,15 +64,31 @@ func AutoSelectWith(files []string, preferences []string) string {
 	return pickHighestRev(candidates)
 }
 
-func filterPlayable(in []Parsed) []Parsed {
+// dropLowPriority returns the parsed files that carry none of the
+// low-priority tags. When every file is low-priority this returns an empty
+// slice and AutoSelectWith falls back to the full set, so a game whose only
+// variants are Demo/Sample still resolves to one of them.
+func dropLowPriority(in []Parsed, lowPriorityTags []string) []Parsed {
 	out := make([]Parsed, 0, len(in))
 	for _, p := range in {
-		if p.HasTag("Demo") || p.HasTag("Proto") {
+		if hasAnyTag(p, lowPriorityTags) {
 			continue
 		}
 		out = append(out, p)
 	}
 	return out
+}
+
+func hasAnyTag(p Parsed, tags []string) bool {
+	for _, t := range tags {
+		if t == "" {
+			continue
+		}
+		if p.HasTag(t) {
+			return true
+		}
+	}
+	return false
 }
 
 func withTag(in []Parsed, tag string) []Parsed {

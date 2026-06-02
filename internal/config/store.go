@@ -33,6 +33,12 @@ import (
 // priority order. A nil pointer means "inherit the global preferences";
 // a non-nil slice (even if empty) is treated as an explicit override.
 //
+// LowPriorityTags is an optional per-mapping override of the set of tags
+// that demote a variant to "last resort" (a file carrying any of them is
+// only selected when its game has no cleaner variant). Same nil/non-nil
+// semantics as Preferences: nil inherits the global list, a non-nil slice
+// (even empty, meaning "no low-priority tags") is an explicit override.
+//
 // AllowedExtensions is the list of dest-side file extensions that
 // should be considered alt-format counterparts of a source file sharing
 // the same basename — e.g. a source "Game.zip" and a dest "Game.rvz"
@@ -58,6 +64,7 @@ type Mapping struct {
 	DestPath          string            `json:"destPath"`
 	ManualGroups      map[string]string `json:"manualGroups"`
 	Preferences       *[]string         `json:"preferences,omitempty"`
+	LowPriorityTags   *[]string         `json:"lowPriorityTags,omitempty"`
 	AllowedExtensions []string          `json:"allowedExtensions"`
 	ExtractArchives   bool              `json:"extractArchives"`
 }
@@ -66,15 +73,17 @@ type Mapping struct {
 // a JSON file. All access is serialized through the embedded mutex;
 // writes are atomic via temp+rename.
 type Store struct {
-	mu                sync.Mutex
-	path              string
-	mappings          []Mapping
-	globalPreferences *[]string
+	mu                    sync.Mutex
+	path                  string
+	mappings              []Mapping
+	globalPreferences     *[]string
+	globalLowPriorityTags *[]string
 }
 
 type storeFile struct {
-	Mappings          []Mapping `json:"mappings"`
-	GlobalPreferences *[]string `json:"globalPreferences,omitempty"`
+	Mappings              []Mapping `json:"mappings"`
+	GlobalPreferences     *[]string `json:"globalPreferences,omitempty"`
+	GlobalLowPriorityTags *[]string `json:"globalLowPriorityTags,omitempty"`
 }
 
 // NewStore loads the JSON file at path (creating an empty store if the
@@ -93,6 +102,7 @@ func (s *Store) load() error {
 		if os.IsNotExist(err) {
 			s.mappings = nil
 			s.globalPreferences = nil
+			s.globalLowPriorityTags = nil
 			return nil
 		}
 		return err
@@ -121,6 +131,7 @@ func (s *Store) load() error {
 		}
 	}
 	s.globalPreferences = wrapper.GlobalPreferences
+	s.globalLowPriorityTags = wrapper.GlobalLowPriorityTags
 	return nil
 }
 
@@ -128,7 +139,11 @@ func (s *Store) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	wrapper := storeFile{Mappings: s.mappings, GlobalPreferences: s.globalPreferences}
+	wrapper := storeFile{
+		Mappings:              s.mappings,
+		GlobalPreferences:     s.globalPreferences,
+		GlobalLowPriorityTags: s.globalLowPriorityTags,
+	}
 	data, err := json.MarshalIndent(wrapper, "", "  ")
 	if err != nil {
 		return err
@@ -239,6 +254,27 @@ func (s *Store) SetMappingPreferences(id string, prefs *[]string) (bool, error) 
 	return false, nil
 }
 
+// SetMappingLowPriorityTags replaces the low-priority-tags override for
+// the mapping with the given ID. Pass nil to clear the override (so the
+// mapping inherits the global list). Returns false if no such mapping
+// exists.
+func (s *Store) SetMappingLowPriorityTags(id string, tags *[]string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.mappings {
+		if s.mappings[i].ID == id {
+			prev := s.mappings[i].LowPriorityTags
+			s.mappings[i].LowPriorityTags = tags
+			if err := s.saveLocked(); err != nil {
+				s.mappings[i].LowPriorityTags = prev
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Delete removes the mapping with the given ID. Returns false if no
 // such mapping exists.
 func (s *Store) Delete(id string) (bool, error) {
@@ -271,15 +307,51 @@ func (s *Store) GlobalPreferences() []string {
 	return out
 }
 
-// SetGlobalPreferences replaces the persisted global preferences list.
+// SetGlobalPreferences replaces the persisted global preferences list. An
+// empty (non-nil) list is preserved as an explicit "no preferences" choice:
+// the clone is always non-nil so it serializes as [] rather than null and
+// therefore reloads as an empty override rather than reverting to defaults.
 func (s *Store) SetGlobalPreferences(prefs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	prev := s.globalPreferences
-	clone := append([]string(nil), prefs...)
+	clone := make([]string, len(prefs))
+	copy(clone, prefs)
 	s.globalPreferences = &clone
 	if err := s.saveLocked(); err != nil {
 		s.globalPreferences = prev
+		return err
+	}
+	return nil
+}
+
+// GlobalLowPriorityTags returns a copy of the persisted global
+// low-priority-tags list, or nil if none has been set.
+func (s *Store) GlobalLowPriorityTags() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.globalLowPriorityTags == nil {
+		return nil
+	}
+	out := make([]string, len(*s.globalLowPriorityTags))
+	copy(out, *s.globalLowPriorityTags)
+	return out
+}
+
+// SetGlobalLowPriorityTags replaces the persisted global low-priority-tags
+// list. An empty (non-nil) list is preserved as an explicit "demote
+// nothing" choice: the clone is always non-nil so it serializes as []
+// rather than null and reloads as an empty override rather than reverting
+// to the default low-priority tags.
+func (s *Store) SetGlobalLowPriorityTags(tags []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prev := s.globalLowPriorityTags
+	clone := make([]string, len(tags))
+	copy(clone, tags)
+	s.globalLowPriorityTags = &clone
+	if err := s.saveLocked(); err != nil {
+		s.globalLowPriorityTags = prev
 		return err
 	}
 	return nil

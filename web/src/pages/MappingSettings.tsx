@@ -104,6 +104,15 @@ export const MappingSettings: Component = () => {
   const [prefError, setPrefError] = createSignal<string | null>(null)
   const [prefSavedAt, setPrefSavedAt] = createSignal<number | null>(null)
 
+  // Low-priority-tags override
+  const [globalLowPrio, setGlobalLowPrio] = createSignal<string[]>([])
+  const [lowOverride, setLowOverride] = createSignal<string[] | null>(null)
+  const [lowItems, setLowItems] = createSignal<string[]>([])
+  const [lowSaving, setLowSaving] = createSignal(false)
+  const [lowDirty, setLowDirty] = createSignal(false)
+  const [lowError, setLowError] = createSignal<string | null>(null)
+  const [lowSavedAt, setLowSavedAt] = createSignal<number | null>(null)
+
   onMount(async () => {
     try {
       const [detail, settings, cfg] = await Promise.all([
@@ -117,6 +126,11 @@ export const MappingSettings: Component = () => {
       const stored = detail.mapping.preferences ?? null
       setOverride(stored)
       setItems(stored ?? settings.preferences)
+
+      setGlobalLowPrio(settings.lowPriorityTags)
+      const storedLow = detail.mapping.lowPriorityTags ?? null
+      setLowOverride(storedLow)
+      setLowItems(storedLow ?? settings.lowPriorityTags)
 
       setConfig(cfg)
       setEditName(detail.mapping.name)
@@ -210,6 +224,42 @@ export const MappingSettings: Component = () => {
       setPrefError((e as Error).message)
     } finally {
       setPrefSaving(false)
+    }
+  }
+
+  // Low-priority-tags handlers
+  const onLowChange = (next: string[]) => {
+    setLowItems(next)
+    setLowDirty(true)
+  }
+
+  const enableLowOverride = () => {
+    setLowOverride([...lowItems()])
+    setLowDirty(true)
+  }
+
+  const inheritLowGlobal = () => {
+    setLowOverride(null)
+    setLowItems([...globalLowPrio()])
+    setLowDirty(true)
+  }
+
+  const isLowOverriding = () => lowOverride() !== null
+
+  const saveLow = async () => {
+    setLowError(null)
+    setLowSaving(true)
+    try {
+      const payload = isLowOverriding() ? lowItems() : null
+      const result = await api.updateMappingLowPriorityTags(params.id!, payload)
+      setLowOverride(result.mapping.lowPriorityTags ?? null)
+      setLowItems(result.effectiveLowPriorityTags)
+      setLowDirty(false)
+      setLowSavedAt(Date.now())
+    } catch (e) {
+      setLowError((e as Error).message)
+    } finally {
+      setLowSaving(false)
     }
   }
 
@@ -404,7 +454,9 @@ export const MappingSettings: Component = () => {
 
       <div class="tui-panel">
         <div class="tui-titlebar">
-          <span>{isOverriding() ? 'OVERRIDE ACTIVE' : 'INHERITING GLOBAL'}</span>
+          <span>
+            AUTO-SELECT PRIORITY {isOverriding() ? '// OVERRIDE ACTIVE' : '// INHERITING GLOBAL'}
+          </span>
           <span class="text-dim">{isOverriding() ? '// per-mapping' : '// follow global'}</span>
         </div>
         <div class="panel-body">
@@ -474,6 +526,102 @@ export const MappingSettings: Component = () => {
                 </button>
               </Show>
               <Show when={prefSavedAt() && !prefDirty()}>
+                <span class="text-green">// SAVED</span>
+              </Show>
+            </div>
+          </Show>
+        </div>
+      </div>
+
+      <div class="tui-panel" style={{ 'margin-top': '16px' }}>
+        <div class="tui-titlebar">
+          <span>
+            LOW PRIORITY TAGS {isLowOverriding() ? '// OVERRIDE ACTIVE' : '// INHERITING GLOBAL'}
+          </span>
+          <span class="text-dim">{isLowOverriding() ? '// per-mapping' : '// follow global'}</span>
+        </div>
+        <div class="panel-body">
+          <Show when={!loading()} fallback={<div class="text-dim">Loading...</div>}>
+            <Show
+              when={isLowOverriding()}
+              fallback={
+                <>
+                  <p class="text-dim" style={{ margin: 0 }}>
+                    This mapping inherits the global low-priority tags. A variant carrying any of
+                    them is auto-selected only when no cleaner alternative exists. Enable an
+                    override below to customize the list just for this mapping.
+                  </p>
+                  <div>
+                    <h3 style={{ margin: '0 0 6px' }}>CURRENT GLOBAL TAGS</h3>
+                    <Show
+                      when={globalLowPrio().length > 0}
+                      fallback={<p class="text-dim">Global low-priority list is empty.</p>}
+                    >
+                      <div class="tag-input is-disabled" role="list">
+                        <For each={globalLowPrio()}>
+                          {(t) => (
+                            <span class="tag-chip" role="listitem">
+                              <span class="tag-chip__text">{t}</span>
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </div>
+                </>
+              }
+            >
+              <p class="text-dim" style={{ margin: 0 }}>
+                These low-priority tags override the global list for this mapping only. Order
+                doesn't matter; matching is case-insensitive. Leave empty to never demote any
+                variant.
+              </p>
+              <div style={{ 'margin-top': '10px' }}>
+                <TagInput
+                  items={lowItems()}
+                  placeholder="e.g. Demo Proto Sample (space, comma, or Enter)"
+                  disabled={lowSaving()}
+                  onChange={onLowChange}
+                />
+              </div>
+            </Show>
+
+            <Show when={lowError()}>
+              <div class="text-danger">! {lowError()}</div>
+            </Show>
+
+            <div class="settings-actions">
+              <button
+                type="button"
+                class="tui-button tui-button--save"
+                disabled={lowSaving() || !lowDirty()}
+                onClick={saveLow}
+              >
+                {lowSaving() ? 'SAVING...' : 'SAVE'}
+              </button>
+              <Show
+                when={isLowOverriding()}
+                fallback={
+                  <button
+                    type="button"
+                    class="tui-button"
+                    disabled={lowSaving()}
+                    onClick={enableLowOverride}
+                  >
+                    OVERRIDE FOR THIS MAPPING
+                  </button>
+                }
+              >
+                <button
+                  type="button"
+                  class="tui-button tui-button--amber"
+                  disabled={lowSaving()}
+                  onClick={inheritLowGlobal}
+                >
+                  REVERT TO GLOBAL
+                </button>
+              </Show>
+              <Show when={lowSavedAt() && !lowDirty()}>
                 <span class="text-green">// SAVED</span>
               </Show>
             </div>

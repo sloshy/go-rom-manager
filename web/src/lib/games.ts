@@ -129,6 +129,11 @@ export function hasTag(p: Parsed, tag: string): boolean {
   )
 }
 
+/** Reports whether the parsed name carries any of the given tags. */
+export function hasAnyTag(p: Parsed, tags: readonly string[]): boolean {
+  return tags.some((t) => t !== '' && hasTag(p, t))
+}
+
 export function groupFiles(
   files: string[],
   manualGroups: Record<string, string> = {},
@@ -165,13 +170,23 @@ function revOf(p: Parsed): number {
 
 export const DEFAULT_PREFERENCES: readonly string[] = ['USA', 'World']
 
+/**
+ * Tags that demote a variant to "last resort": a file carrying any of
+ * them is only selected when its game has no cleaner variant. Demo and
+ * Proto were the original hardcoded exclusions; Sample is included by
+ * default for the same reason. Mirror of `DefaultLowPriorityTags` in the
+ * Go `internal/games` package — keep the two in sync.
+ */
+export const DEFAULT_LOW_PRIORITY_TAGS: readonly string[] = ['Demo', 'Proto', 'Sample']
+
 export function autoSelect(
   files: string[],
   preferences: readonly string[] = DEFAULT_PREFERENCES,
+  lowPriorityTags: readonly string[] = DEFAULT_LOW_PRIORITY_TAGS,
 ): string {
   if (files.length === 0) return ''
   const parsed = files.map(parseName)
-  const playable = parsed.filter((p) => !hasTag(p, 'Demo') && !hasTag(p, 'Proto'))
+  const playable = parsed.filter((p) => !hasAnyTag(p, lowPriorityTags))
   const candidates = playable.length > 0 ? playable : parsed
 
   for (const tag of preferences) {
@@ -269,6 +284,7 @@ function pickHighestRev(in_: Parsed[]): string {
 export function autoSelectVariant(
   files: string[],
   preferences: readonly string[] = DEFAULT_PREFERENCES,
+  lowPriorityTags: readonly string[] = DEFAULT_LOW_PRIORITY_TAGS,
 ): string[] {
   if (files.length === 0) return []
   const bundles = bundleByVariant(files)
@@ -278,7 +294,7 @@ export function autoSelectVariant(
     repByLabel.set(b.label, b.files[0])
     reps.push(b.files[0])
   }
-  const chosenRep = autoSelect(reps, preferences)
+  const chosenRep = autoSelect(reps, preferences, lowPriorityTags)
   if (!chosenRep) return []
   const chosenLabel = variantKey(chosenRep)
   const chosenBundle = bundles.find((b) => b.label === chosenLabel)

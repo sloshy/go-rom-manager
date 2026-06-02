@@ -146,10 +146,11 @@ func (s *Server) handleGetMapping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"mapping":              m,
-		"sources":              sources,
-		"destFiles":            destFiles,
-		"effectivePreferences": s.effectivePreferences(m),
+		"mapping":                  m,
+		"sources":                  sources,
+		"destFiles":                destFiles,
+		"effectivePreferences":     s.effectivePreferences(m),
+		"effectiveLowPriorityTags": s.effectiveLowPriorityTags(m),
 	})
 }
 
@@ -170,37 +171,79 @@ func (s *Server) effectivePreferences(m config.Mapping) []string {
 	return out
 }
 
-type preferencesPayload struct {
-	Preferences []string `json:"preferences"`
+// effectiveLowPriorityTags resolves the low-priority-tags list for the
+// given mapping the same way effectivePreferences resolves preferences:
+// per-mapping override → persisted global list → project default.
+func (s *Server) effectiveLowPriorityTags(m config.Mapping) []string {
+	if m.LowPriorityTags != nil {
+		out := make([]string, len(*m.LowPriorityTags))
+		copy(out, *m.LowPriorityTags)
+		return out
+	}
+	if g := s.store.GlobalLowPriorityTags(); g != nil {
+		return g
+	}
+	out := make([]string, len(games.DefaultLowPriorityTags))
+	copy(out, games.DefaultLowPriorityTags)
+	return out
+}
+
+// settingsPayload carries global settings updates. Each field is a pointer
+// so a PUT can update just one list (preferences or low-priority tags)
+// without disturbing the other — an omitted/null field is left unchanged.
+type settingsPayload struct {
+	Preferences     *[]string `json:"preferences"`
+	LowPriorityTags *[]string `json:"lowPriorityTags"`
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
-	prefs := s.store.GlobalPreferences()
-	if prefs == nil {
-		prefs = append([]string(nil), games.DefaultPreferences...)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"preferences":        prefs,
-		"defaultPreferences": games.DefaultPreferences,
-	})
+	s.writeSettings(w)
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	var req preferencesPayload
+	var req settingsPayload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	cleaned, err := cleanPreferences(req.Preferences)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	if req.Preferences != nil {
+		cleaned, err := cleanPreferences(*req.Preferences)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.store.SetGlobalPreferences(cleaned); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
-	if err := s.store.SetGlobalPreferences(cleaned); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if req.LowPriorityTags != nil {
+		if err := s.store.SetGlobalLowPriorityTags(cleanTags(*req.LowPriorityTags)); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"preferences": cleaned})
+	s.writeSettings(w)
+}
+
+// writeSettings emits the current global settings, substituting the
+// project defaults for any list that has never been set. Shared by the
+// GET and PUT handlers so both always report the resolved state.
+func (s *Server) writeSettings(w http.ResponseWriter) {
+	prefs := s.store.GlobalPreferences()
+	if prefs == nil {
+		prefs = append([]string(nil), games.DefaultPreferences...)
+	}
+	low := s.store.GlobalLowPriorityTags()
+	if low == nil {
+		low = append([]string(nil), games.DefaultLowPriorityTags...)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"preferences":            prefs,
+		"defaultPreferences":     games.DefaultPreferences,
+		"lowPriorityTags":        low,
+		"defaultLowPriorityTags": games.DefaultLowPriorityTags,
+	})
 }
 
 // mappingPreferencesPayload's pointer field distinguishes "field omitted /
@@ -243,6 +286,42 @@ func (s *Server) handleUpdateMappingPreferences(w http.ResponseWriter, r *http.R
 	})
 }
 
+// mappingLowPriorityPayload's pointer field distinguishes "field omitted /
+// null → inherit global" from "explicit list (possibly empty) → override".
+type mappingLowPriorityPayload struct {
+	LowPriorityTags *[]string `json:"lowPriorityTags"`
+}
+
+func (s *Server) handleUpdateMappingLowPriorityTags(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req mappingLowPriorityPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	var override *[]string
+	if req.LowPriorityTags != nil {
+		cleaned := cleanTags(*req.LowPriorityTags)
+		override = &cleaned
+	}
+
+	ok, err := s.store.SetMappingLowPriorityTags(id, override)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "mapping not found")
+		return
+	}
+	m, _ := s.store.Get(id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mapping":                  m,
+		"effectiveLowPriorityTags": s.effectiveLowPriorityTags(m),
+	})
+}
+
 // cleanPreferences trims whitespace, drops empty entries, and rejects
 // duplicates (case-insensitive). The returned slice is always non-nil
 // (empty if every entry was blank) so callers can distinguish "explicit
@@ -263,6 +342,29 @@ func cleanPreferences(in []string) ([]string, error) {
 		out = append(out, t)
 	}
 	return out, nil
+}
+
+// cleanTags normalizes a set of low-priority tags: trim whitespace, drop
+// blanks, and silently dedupe case-insensitively (first spelling wins).
+// Unlike cleanPreferences it does not error on duplicates — the list is an
+// unordered set matched case-insensitively, so coalescing "Demo"/"demo" is
+// friendlier than rejecting the save.
+func cleanTags(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, t := range in {
+		v := strings.TrimSpace(t)
+		if v == "" {
+			continue
+		}
+		key := strings.ToLower(v)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, v)
+	}
+	return out
 }
 
 // cleanExtensions normalizes a list of allowed alt-format extensions:

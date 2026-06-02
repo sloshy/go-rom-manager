@@ -344,6 +344,137 @@ func TestSettings_RejectsDuplicates(t *testing.T) {
 	}
 }
 
+func TestSettings_LowPriorityRoundTrip(t *testing.T) {
+	ts, _, _, _ := setupTestServer(t)
+
+	resp, err := http.Get(ts.URL + "/api/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var initial struct {
+		Preferences            []string `json:"preferences"`
+		LowPriorityTags        []string `json:"lowPriorityTags"`
+		DefaultLowPriorityTags []string `json:"defaultLowPriorityTags"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&initial); err != nil {
+		t.Fatal(err)
+	}
+	if len(initial.LowPriorityTags) != 3 || initial.LowPriorityTags[0] != "Demo" ||
+		initial.LowPriorityTags[1] != "Proto" || initial.LowPriorityTags[2] != "Sample" {
+		t.Errorf("default lowPriorityTags = %v, want [Demo Proto Sample]", initial.LowPriorityTags)
+	}
+	if len(initial.DefaultLowPriorityTags) != 3 {
+		t.Error("expected defaultLowPriorityTags hint to be populated")
+	}
+
+	// Updating only the low-priority list must leave preferences untouched
+	// (pointer fields → independent updates) and dedupe case-insensitively.
+	body, _ := json.Marshal(map[string]any{"lowPriorityTags": []string{" Beta ", "Sample", "sample", ""}})
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	put, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer put.Body.Close()
+	if put.StatusCode != http.StatusOK {
+		t.Fatalf("PUT settings status=%d", put.StatusCode)
+	}
+
+	resp2, _ := http.Get(ts.URL + "/api/settings")
+	defer resp2.Body.Close()
+	var after struct {
+		Preferences     []string `json:"preferences"`
+		LowPriorityTags []string `json:"lowPriorityTags"`
+	}
+	json.NewDecoder(resp2.Body).Decode(&after)
+	if len(after.LowPriorityTags) != 2 || after.LowPriorityTags[0] != "Beta" || after.LowPriorityTags[1] != "Sample" {
+		t.Errorf("after PUT lowPriorityTags = %v, want [Beta Sample] (trimmed/deduped)", after.LowPriorityTags)
+	}
+	if len(after.Preferences) != 2 || after.Preferences[0] != "USA" || after.Preferences[1] != "World" {
+		t.Errorf("preferences should be untouched by a low-priority-only PUT, got %v", after.Preferences)
+	}
+}
+
+func TestMappingLowPriorityTags_OverrideAndInherit(t *testing.T) {
+	ts, srcRoot, dstRoot, store := setupTestServer(t)
+
+	created, err := store.Add(config.Mapping{
+		Name:        "Test Mapping",
+		SourcePaths: []string{filepath.Join(srcRoot, "console-a")},
+		DestPath:    dstRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set a global low-priority list so inheritance is observable.
+	body, _ := json.Marshal(map[string]any{"lowPriorityTags": []string{"Demo"}})
+	r, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", bytes.NewReader(body))
+	if got, _ := http.DefaultClient.Do(r); got.StatusCode != http.StatusOK {
+		t.Fatalf("seed global low-priority status=%d", got.StatusCode)
+	}
+
+	// No override → inherit the global list.
+	resp, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer resp.Body.Close()
+	var detail struct {
+		Mapping                  config.Mapping `json:"mapping"`
+		EffectiveLowPriorityTags []string       `json:"effectiveLowPriorityTags"`
+	}
+	json.NewDecoder(resp.Body).Decode(&detail)
+	if detail.Mapping.LowPriorityTags != nil {
+		t.Errorf("expected nil per-mapping override, got %v", detail.Mapping.LowPriorityTags)
+	}
+	if len(detail.EffectiveLowPriorityTags) != 1 || detail.EffectiveLowPriorityTags[0] != "Demo" {
+		t.Errorf("effective low-priority = %v, want [Demo] inherited", detail.EffectiveLowPriorityTags)
+	}
+
+	// Per-mapping override wins over the global list.
+	overrideBody, _ := json.Marshal(map[string]any{"lowPriorityTags": []string{"Beta"}})
+	pReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID+"/low-priority-tags", bytes.NewReader(overrideBody))
+	pReq.Header.Set("Content-Type", "application/json")
+	pResp, _ := http.DefaultClient.Do(pReq)
+	defer pResp.Body.Close()
+	if pResp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT mapping low-priority status=%d", pResp.StatusCode)
+	}
+
+	resp2, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer resp2.Body.Close()
+	json.NewDecoder(resp2.Body).Decode(&detail)
+	if detail.Mapping.LowPriorityTags == nil || (*detail.Mapping.LowPriorityTags)[0] != "Beta" {
+		t.Errorf("override not stored, got %+v", detail.Mapping.LowPriorityTags)
+	}
+	if len(detail.EffectiveLowPriorityTags) != 1 || detail.EffectiveLowPriorityTags[0] != "Beta" {
+		t.Errorf("effective low-priority = %v, want [Beta] from override", detail.EffectiveLowPriorityTags)
+	}
+
+	// Clearing (null) reverts to inheriting the global list.
+	clearReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/mappings/"+created.ID+"/low-priority-tags",
+		bytes.NewReader([]byte(`{"lowPriorityTags":null}`)))
+	clearReq.Header.Set("Content-Type", "application/json")
+	cResp, _ := http.DefaultClient.Do(clearReq)
+	defer cResp.Body.Close()
+	if cResp.StatusCode != http.StatusOK {
+		t.Fatalf("clear status=%d", cResp.StatusCode)
+	}
+	resp3, _ := http.Get(ts.URL + "/api/mappings/" + created.ID)
+	defer resp3.Body.Close()
+	var afterClear struct {
+		Mapping                  config.Mapping `json:"mapping"`
+		EffectiveLowPriorityTags []string       `json:"effectiveLowPriorityTags"`
+	}
+	json.NewDecoder(resp3.Body).Decode(&afterClear)
+	if afterClear.Mapping.LowPriorityTags != nil {
+		t.Errorf("expected cleared override, got %+v", afterClear.Mapping.LowPriorityTags)
+	}
+	if len(afterClear.EffectiveLowPriorityTags) != 1 || afterClear.EffectiveLowPriorityTags[0] != "Demo" {
+		t.Errorf("effective low-priority after clear = %v, want [Demo] (back to global)", afterClear.EffectiveLowPriorityTags)
+	}
+}
+
 func TestMappingPreferences_OverrideAndInherit(t *testing.T) {
 	ts, srcRoot, dstRoot, store := setupTestServer(t)
 

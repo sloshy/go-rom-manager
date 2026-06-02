@@ -134,6 +134,78 @@ func TestStore_SetMappingPreferences(t *testing.T) {
 	}
 }
 
+func TestStore_GlobalLowPriorityTagsPersist(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+	s, _ := NewStore(storePath)
+
+	if got := s.GlobalLowPriorityTags(); got != nil {
+		t.Errorf("fresh store GlobalLowPriorityTags = %v, want nil", got)
+	}
+	if err := s.SetGlobalLowPriorityTags([]string{"Demo", "Sample"}); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := NewStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s2.GlobalLowPriorityTags()
+	if len(got) != 2 || got[0] != "Demo" || got[1] != "Sample" {
+		t.Errorf("reloaded GlobalLowPriorityTags = %v, want [Demo Sample]", got)
+	}
+}
+
+// An explicit empty global list ("demote nothing") must survive a reload as
+// a non-nil empty override rather than reverting to the default tags.
+func TestStore_EmptyGlobalLowPriorityTagsRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+	s, _ := NewStore(storePath)
+
+	if err := s.SetGlobalLowPriorityTags([]string{}); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := NewStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := s2.GlobalLowPriorityTags()
+	if got == nil {
+		t.Fatal("reloaded empty GlobalLowPriorityTags = nil (reverted to inherit/default), want non-nil empty")
+	}
+	if len(got) != 0 {
+		t.Errorf("reloaded GlobalLowPriorityTags = %v, want empty", got)
+	}
+}
+
+func TestStore_SetMappingLowPriorityTags(t *testing.T) {
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "mappings.json")
+	s, _ := NewStore(storePath)
+	added, _ := s.Add(Mapping{Name: "A", SourcePath: "/s", DestPath: "/d"})
+
+	override := []string{"Beta"}
+	ok, err := s.SetMappingLowPriorityTags(added.ID, &override)
+	if err != nil || !ok {
+		t.Fatalf("SetMappingLowPriorityTags = (%v, %v)", ok, err)
+	}
+	got, _ := s.Get(added.ID)
+	if got.LowPriorityTags == nil || (*got.LowPriorityTags)[0] != "Beta" {
+		t.Errorf("override not persisted, got %+v", got.LowPriorityTags)
+	}
+
+	// Clearing the override puts the mapping back to inheriting the global list.
+	if _, err := s.SetMappingLowPriorityTags(added.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Get(added.ID)
+	if got.LowPriorityTags != nil {
+		t.Errorf("expected nil low-priority tags after clear, got %+v", got.LowPriorityTags)
+	}
+}
+
 func TestStore_ExtractArchivesPersists(t *testing.T) {
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "mappings.json")

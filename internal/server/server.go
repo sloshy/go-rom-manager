@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/mappings/{id}", s.handleUpdateMapping)
 	mux.HandleFunc("DELETE /api/mappings/{id}", s.handleDeleteMapping)
 	mux.HandleFunc("PUT /api/mappings/{id}/preferences", s.handleUpdateMappingPreferences)
+	mux.HandleFunc("PUT /api/mappings/{id}/low-priority-tags", s.handleUpdateMappingLowPriorityTags)
 	mux.HandleFunc("POST /api/mappings/{id}/sync", s.handleSync)
 
 	mux.Handle("/", spaFileServer(s.dist))

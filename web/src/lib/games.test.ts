@@ -113,6 +113,27 @@ describe('autoSelect', () => {
     const files = ['Example Game 1 (Japan) (Demo).zip', 'Example Game 1 (Japan).zip']
     expect(autoSelect(files, ['Japan'])).toBe('Example Game 1 (Japan).zip')
   })
+
+  it('demotes Sample by default', () => {
+    const files = ['Example Game 1 (USA) (Sample).zip', 'Example Game 1 (USA).zip']
+    expect(autoSelect(files)).toBe('Example Game 1 (USA).zip')
+  })
+
+  it('only picks a low-priority variant when nothing cleaner exists', () => {
+    const files = ['Example Game 1 (USA) (Sample).zip']
+    expect(autoSelect(files)).toBe('Example Game 1 (USA) (Sample).zip')
+  })
+
+  it('honours a custom low-priority list', () => {
+    const files = ['Example Game 1 (USA) (Beta).zip', 'Example Game 1 (USA).zip']
+    // "Beta" isn't demoted by default, but a custom list demotes it.
+    expect(autoSelect(files, undefined, ['Beta'])).toBe('Example Game 1 (USA).zip')
+  })
+
+  it('an empty low-priority list demotes nothing', () => {
+    const files = ['Example Game 1 (Japan).zip', 'Example Game 1 (USA) (Demo).zip']
+    expect(autoSelect(files, ['USA'], [])).toBe('Example Game 1 (USA) (Demo).zip')
+  })
 })
 
 describe('fileStem / fileExt', () => {
@@ -271,6 +292,19 @@ describe('autoSelectVariant', () => {
 
   it('returns the single file when no track tags are present', () => {
     expect(autoSelectVariant(['Game (USA).zip', 'Game (Japan).zip'])).toEqual(['Game (USA).zip'])
+  })
+
+  it('demotes a low-priority variant across the whole bundle', () => {
+    const files = [
+      'Game (USA) (Sample).cue',
+      'Game (USA) (Sample) (Track 1).bin',
+      'Game (USA).cue',
+      'Game (USA) (Track 1).bin',
+    ]
+    expect(autoSelectVariant(files).slice().sort()).toEqual([
+      'Game (USA) (Track 1).bin',
+      'Game (USA).cue',
+    ])
   })
 
   it('returns [] for empty input', () => {

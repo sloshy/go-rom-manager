@@ -104,21 +104,29 @@ By default the mapping list persists at
 When you tick a whole game (the prefix-level checkbox) without manually
 picking a file, the editor auto-selects the best variant:
 
-1. Files tagged `Demo` or `Proto` are excluded if any other variant exists.
+1. Variants carrying a **low-priority tag** are demoted: they're only
+   picked when no cleaner variant exists. The default low-priority list
+   is `Demo, Proto, Sample`.
 2. Walk the **preference list** top to bottom; the first tag that
    matches at least one variant wins. The default list is `USA, World`.
 3. Among ties, prefer the highest `Rev N`. So for example two files `Example (Rev 1).zip` and `Example (Rev 2.zip)`, it will pick the latter.
 
-The preference list is editable in the UI:
+So with the defaults, `My Game (Sample)` is selected only when there's no
+plain `My Game` to choose instead.
 
-- **Global defaults** at `[SETTINGS]` in the header. Reorder with the
-  drag handle, edit inline, add new tags (`Japan`, `Europe`, ...), and
-  click the green **SAVE** button.
-- **Per-mapping override** at `[SETTINGS]` inside a mapping editor —
-  starts off inheriting the global list; toggle **OVERRIDE FOR THIS
-  MAPPING** to customise just one mapping, or **REVERT TO GLOBAL** to
-  drop the override. Demo/Proto exclusion and the Rev tiebreaker are
-  fixed and apply regardless of the preference list.
+Both lists are editable in the UI:
+
+- **Global defaults** at `[SETTINGS]` in the header — an **AUTO-SELECT
+  PRIORITY** panel (drag to reorder, edit inline, add tags like `Japan`,
+  `Europe`) and a **LOW PRIORITY TAGS** panel (a chip list; order doesn't
+  matter, matching is case-insensitive). Each has its own green **SAVE**
+  button.
+- **Per-mapping override** at `[SETTINGS]` inside a mapping editor — both
+  the preference list and the low-priority list start off inheriting the
+  global values; toggle **OVERRIDE FOR THIS MAPPING** to customise just
+  one mapping, or **REVERT TO GLOBAL** to drop the override. Set the
+  low-priority list to empty to demote nothing. The Rev tiebreaker is
+  fixed and applies regardless of either list.
 
 You can override grouping (e.g. to merge a Japanese release into the
 same group as its Western counterpart) by right-clicking a source-side

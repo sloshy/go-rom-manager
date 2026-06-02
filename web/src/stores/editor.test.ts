@@ -72,6 +72,7 @@ beforeEach(() => {
           })),
           destFiles: nextLoad.destFiles,
           effectivePreferences: ['USA', 'World'],
+          effectiveLowPriorityTags: ['Demo', 'Proto', 'Sample'],
         }
         return new Response(JSON.stringify(detail), {
           status: 200,
