@@ -80,6 +80,7 @@
   appearance: none;
   width: 18px;
   height: 18px;
+  flex-shrink: 0;
   border: 2px solid var(--fg-dim);
   background: var(--bg);
   margin: 0;
